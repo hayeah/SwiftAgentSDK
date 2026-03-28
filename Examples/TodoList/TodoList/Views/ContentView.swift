@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftAgentSDK
 
 struct ContentView: View {
     @Environment(AppState.self) var appState
@@ -11,25 +12,30 @@ struct ContentView: View {
             Text("Todos")
                 .font(.largeTitle.bold())
                 .padding()
+                .agentID("title")
 
             // Input
             HStack {
                 TextField("What needs to be done?", text: $state.newTodoText)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { addTodo() }
+                    .agentID("input")
 
                 Button("Add") { addTodo() }
                     .buttonStyle(.borderedProminent)
                     .disabled(appState.newTodoText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .agentID("addButton")
             }
             .padding(.horizontal)
             .padding(.bottom)
+            .agentID("inputBar")
 
             // List
             if appState.todos.isEmpty {
                 Spacer()
                 Text("No todos yet")
                     .foregroundStyle(.secondary)
+                    .agentID("emptyLabel")
                 Spacer()
             } else {
                 List {
@@ -41,6 +47,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                .agentID("todoList")
             }
 
             // Footer
@@ -53,11 +60,14 @@ struct ContentView: View {
                         appState.clearCompleted()
                     }
                     .buttonStyle(.bordered)
+                    .agentID("clearButton")
                 }
                 .padding()
+                .agentID("footer")
             }
         }
         .frame(minWidth: 400, minHeight: 500)
+        .agentID("root")
     }
 
     private func addTodo() {

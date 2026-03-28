@@ -61,12 +61,18 @@ final class Poller {
     }
 
     private func processAndRespond(_ request: [String: Any]) async {
-        let result = dispatcher.dispatch(request)
+        let result: AgentResult
+        let path = request["_path"] as? String ?? "/request"
+        if path == "/view", let viewStore = AgentViewStore.active {
+            result = viewStore.dispatch(request)
+        } else {
+            result = dispatcher.dispatch(request)
+        }
 
-        // Build response with request ID
+        // Build response with internal request tracking ID
         var fullResponse = result.json
-        if let id = request["id"] {
-            fullResponse["id"] = id
+        if let reqID = request["_reqID"] {
+            fullResponse["_reqID"] = reqID
         }
 
         // Send response by polling again with the response body

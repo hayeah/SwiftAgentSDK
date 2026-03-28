@@ -3,7 +3,8 @@
 // Minimal HTTP server that pairs agent requests with app long-polls.
 //
 // - POST /poll    — app long-polls here; receives queued requests, responds with results
-// - POST /request — agent sends a command, blocks until the app responds
+// - POST /request — agent sends a state command (get/set/call), blocks until the app responds
+// - POST /view    — agent sends a view command (tree/screenshot/get/set/call), blocks until the app responds
 //
 // Usage: bun run server/index.ts --port 9876
 
@@ -16,9 +17,10 @@ function log(...msg: any[]) {
   if (debug) console.log("[agentsdk]", ...msg);
 }
 
-// Pending agent requests waiting for app responses
+// Pending agent requests waiting for app responses.
+// Uses _reqID (internal) for tracking — never touches user-facing fields like "id".
 interface PendingRequest {
-  id: string;
+  _reqID: string;
   request: any;
   resolve: (body: any) => void;
 }
@@ -32,7 +34,7 @@ let appWaiting: ((request: any) => void) | null = null;
 function deliverToApp(request: any): Promise<any> {
   return new Promise<any>((resolve) => {
     const entry: PendingRequest = {
-      id: request.id,
+      _reqID: request._reqID,
       request,
       resolve,
     };
@@ -47,6 +49,80 @@ function deliverToApp(request: any): Promise<any> {
   });
 }
 
+// Process screenshot: crop to view id frame, resize, convert format
+async function processScreenshot(
+  data: any,
+  request: any
+): Promise<any> {
+  let { image, format, size, scale, frames } = data;
+  const targetID = request.id; // user's view id, not _reqID
+  const requestedFormat = request.format || "png";
+  const requestedQuality = request.quality ?? 0.8;
+  const requestedScale = request.scale;
+
+  // If a view ID was specified and we have frames, crop
+  if (targetID && frames && frames[targetID]) {
+    const frame = frames[targetID];
+    const nativeScale = scale || 1;
+
+    // Crop coordinates are in points — multiply by scale for pixels
+    const cropX = Math.round(frame.x * nativeScale);
+    const cropY = Math.round(frame.y * nativeScale);
+    const cropW = Math.round(frame.w * nativeScale);
+    const cropH = Math.round(frame.h * nativeScale);
+
+    // Decode base64 PNG, crop, re-encode
+    const buf = Buffer.from(image, "base64");
+
+    try {
+      const sharp = require("sharp");
+      let pipeline = sharp(buf).extract({
+        left: cropX,
+        top: cropY,
+        width: cropW,
+        height: cropH,
+      });
+
+      // Rescale if requested
+      if (requestedScale && requestedScale !== nativeScale) {
+        const ratio = requestedScale / nativeScale;
+        pipeline = pipeline.resize(
+          Math.round(cropW * ratio),
+          Math.round(cropH * ratio)
+        );
+      }
+
+      // Format conversion
+      if (requestedFormat === "jpg" || requestedFormat === "jpeg") {
+        pipeline = pipeline.jpeg({
+          quality: Math.round(requestedQuality * 100),
+        });
+        format = "jpg";
+      } else {
+        pipeline = pipeline.png();
+        format = "png";
+      }
+
+      const outputBuf = await pipeline.toBuffer();
+      return {
+        image: outputBuf.toString("base64"),
+        format,
+        size: { w: frame.w, h: frame.h },
+        scale: requestedScale || nativeScale,
+      };
+    } catch (e: any) {
+      // sharp not available — return uncropped with a warning
+      return {
+        ...data,
+        warning: `crop failed: ${e.message}. Install sharp for image processing.`,
+      };
+    }
+  }
+
+  // No cropping needed — return as-is
+  return data;
+}
+
 Bun.serve({
   port,
 
@@ -56,12 +132,14 @@ Bun.serve({
     if (url.pathname === "/poll" && req.method === "POST") {
       const body = await req.json().catch(() => null);
 
-      // If body has an id, it's a response to a previous request
-      if (body?.id) {
-        const idx = pendingRequests.findIndex((p) => p.id === body.id);
+      // If body has a _reqID, it's a response to a previous request
+      if (body?._reqID) {
+        const idx = pendingRequests.findIndex(
+          (p) => p._reqID === body._reqID
+        );
         if (idx >= 0) {
           const pending = pendingRequests.splice(idx, 1)[0];
-          log("← app response for", body.id, JSON.stringify(body));
+          log("← app response for", body._reqID, JSON.stringify(body));
           pending.resolve(body);
         }
       }
@@ -74,7 +152,7 @@ Bun.serve({
         );
         if (next) {
           (next as any).delivered = true;
-          log("→ delivering queued request", next.id);
+          log("→ delivering queued request", next._reqID);
           return Response.json(next.request);
         }
       }
@@ -82,26 +160,49 @@ Bun.serve({
       // No queued requests — wait
       return new Promise<Response>((resolve) => {
         appWaiting = (request: any) => {
-          log("→ delivering request to app", request.id);
+          log("→ delivering request to app", request._reqID);
           resolve(Response.json(request));
         };
       });
     }
 
-    if (url.pathname === "/request" && req.method === "POST") {
+    if (
+      (url.pathname === "/request" || url.pathname === "/view") &&
+      req.method === "POST"
+    ) {
       const request = await req.json();
-      request.id = request.id || `req_${++requestCounter}`;
+      request._reqID = `req_${++requestCounter}`;
+      request._path = url.pathname;
 
-      log("← agent request", request.id, JSON.stringify(request));
+      log(
+        "← agent request",
+        request._reqID,
+        url.pathname,
+        JSON.stringify(request)
+      );
 
       if (!appWaiting && pendingRequests.length === 0) {
-        // No app connected — we'll queue it and wait
         log("  (no app connected, queueing)");
       }
 
       const result = await deliverToApp(request);
-      log("→ agent response", request.id, JSON.stringify(result));
-      return Response.json(result);
+
+      // Post-process screenshot: crop to view id if specified
+      if (
+        url.pathname === "/view" &&
+        request.type === "screenshot" &&
+        result.data?.image &&
+        request.id
+      ) {
+        const processed = await processScreenshot(result.data, request);
+        log("→ agent response", request._reqID, "(screenshot processed)");
+        return Response.json({ data: processed });
+      }
+
+      // Strip internal fields from the response
+      const { _reqID, _path, ...cleanResult } = result;
+      log("→ agent response", request._reqID, JSON.stringify(cleanResult));
+      return Response.json(cleanResult);
     }
 
     if (url.pathname === "/health") {
