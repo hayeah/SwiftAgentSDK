@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * swiftui-tap — CLI for SwiftAgentSDK
+ * swiftui-tap — CLI for SwiftUITap
  *
  * Usage:
  *   swiftui-tap server [--port 9876] [--debug]
@@ -292,7 +292,7 @@ if (cmd === "server") {
 } else if (cmd === "state" && sub === "call") {
   await cmdStateCall(rest);
 } else {
-  console.log(`swiftui-tap — CLI for SwiftAgentSDK
+  console.log(`swiftui-tap — CLI for SwiftUITap
 
 Usage:
   swiftui-tap server [--port 9876] [--debug]

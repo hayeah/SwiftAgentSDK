@@ -35,7 +35,7 @@ final class Poller {
                 let request = try await fetchNextRequest(previousResponse: nil)
                 await processAndRespond(request)
             } catch {
-                print("[AgentSDK] Poll error: \(error.localizedDescription). Retrying in 2s...")
+                print("[SwiftUITap] Poll error: \(error.localizedDescription). Retrying in 2s...")
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -82,7 +82,7 @@ final class Poller {
                 await processAndRespond(nextRequest)
                 return
             } catch {
-                print("[AgentSDK] Response delivery error: \(error.localizedDescription). Retrying in 2s...")
+                print("[SwiftUITap] Response delivery error: \(error.localizedDescription). Retrying in 2s...")
                 try? await Task.sleep(for: .seconds(2))
             }
         }

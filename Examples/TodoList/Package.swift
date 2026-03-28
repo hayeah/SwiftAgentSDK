@@ -8,12 +8,12 @@ let package = Package(
         .macOS(.v14),
     ],
     dependencies: [
-        .package(name: "SwiftAgentSDK", path: "../../"),
+        .package(name: "SwiftUITap", path: "../../"),
     ],
     targets: [
         .executableTarget(
             name: "TodoList",
-            dependencies: [.product(name: "SwiftAgentSDK", package: "SwiftAgentSDK")],
+            dependencies: [.product(name: "SwiftUITap", package: "SwiftUITap")],
             path: "TodoList",
             exclude: ["Info.plist"]
         ),

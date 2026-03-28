@@ -1,7 +1,7 @@
 {
   "name": "swiftui-tap",
   "version": "0.1.0",
-  "description": "CLI for SwiftAgentSDK — tap into running SwiftUI apps",
+  "description": "CLI for SwiftUITap — tap into running SwiftUI apps",
   "type": "module",
   "bin": {
     "swiftui-tap": "./cli.ts"

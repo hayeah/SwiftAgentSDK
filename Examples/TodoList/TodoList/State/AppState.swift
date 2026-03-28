@@ -1,9 +1,9 @@
 import Foundation
 import SwiftUI
-import SwiftAgentSDK
+import SwiftUITap
 
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class AppState {

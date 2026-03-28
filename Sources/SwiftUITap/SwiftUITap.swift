@@ -1,8 +1,8 @@
 import Foundation
 
-/// Main entry point for the SwiftAgentSDK.
-/// Call `SwiftAgentSDK.poll(state:server:)` to start the long-poll loop.
-public enum SwiftAgentSDK {
+/// Main entry point for SwiftUITap.
+/// Call `SwiftUITap.poll(state:server:)` to start the long-poll loop.
+public enum SwiftUITap {
 
     /// Start polling the agent server for commands.
     /// Must be called from the main actor (typically in your App's init).
@@ -13,14 +13,14 @@ public enum SwiftAgentSDK {
     @MainActor
     public static func poll(state: any AgentDispatchable, server: String) {
         guard let url = URL(string: server) else {
-            print("[AgentSDK] Invalid server URL: \(server)")
+            print("[SwiftUITap] Invalid server URL: \(server)")
             return
         }
         let poller = Poller(state: state, serverURL: url)
         // Retain the poller via global storage
         _activePollers.append(poller)
         poller.start()
-        print("[AgentSDK] Polling \(server)")
+        print("[SwiftUITap] Polling \(server)")
     }
 }
 

@@ -1,10 +1,10 @@
 ---
-overview: "Design spec for SwiftAgentSDK v2: uses an @AgentSDK Swift macro instead of @objc dynamic + KVC. Generates AgentDispatchable conformance at compile time. Pure Swift — no NSObject, no KVC, no NSInvocation. Works cleanly with @Observable and SwiftUI."
+overview: "Design spec for SwiftUITap v2: uses an @SwiftUITap Swift macro instead of @objc dynamic + KVC. Generates AgentDispatchable conformance at compile time. Pure Swift — no NSObject, no KVC, no NSInvocation. Works cleanly with @Observable and SwiftUI."
 tags:
   - spec
 ---
 
-# SwiftAgentSDK v2 — `@AgentSDK` Macro Approach
+# SwiftUITap v2 — `@SwiftUITap` Macro Approach
 
 ## Goal
 
@@ -37,7 +37,7 @@ The macro only processes declarations it can fully understand from syntax alone.
 Every agent-exposed property **must** have an explicit type annotation:
 
 ```swift
-@AgentSDK
+@SwiftUITap
 @Observable
 final class AppState {
     // SUPPORTED — explicit type annotation on all of these
@@ -79,7 +79,7 @@ final class AppState {
 Every agent-exposed method **must** have labeled parameters with supported types:
 
 ```swift
-@AgentSDK
+@SwiftUITap
 @Observable
 final class AppState {
     // SUPPORTED — primitive params
@@ -152,14 +152,14 @@ No type inference. No type alias resolution. No cross-file lookups. Just string 
 
 ## Core Concepts
 
-### `@AgentSDK` Macro
+### `@SwiftUITap` Macro
 
 An attached macro that generates `AgentDispatchable` conformance. The app author writes normal `@Observable` classes — no NSObject, no `@objc`, no special types. All properties must have explicit type annotations:
 
 ```swift
-import SwiftAgentSDK
+import SwiftUITap
 
-@AgentSDK
+@SwiftUITap
 @Observable
 final class AppState {
     var counter: Int = 0
@@ -186,14 +186,14 @@ final class AppState {
     }
 }
 
-@AgentSDK
+@SwiftUITap
 @Observable
 final class SettingsState {
     var darkMode: Bool = false
     var fontSize: Int = 16
 }
 
-@AgentSDK
+@SwiftUITap
 @Observable
 final class TodoItem {
     var title: String
@@ -314,7 +314,7 @@ case "settings":
     return (settings as? AgentDispatchable)?.__agentGet(tail) ?? .error("not dispatchable: settings")
 ```
 
-If `SettingsState` has `@AgentSDK`, it conforms and traversal works. If it doesn't, the snapshot/traversal returns nil.
+If `SettingsState` has `@SwiftUITap`, it conforms and traversal works. If it doesn't, the snapshot/traversal returns nil.
 
 This means:
 - `get "settings.darkMode"` → splits to `("settings", "darkMode")`, delegates to `SettingsState.__agentGet("darkMode")`
@@ -326,7 +326,7 @@ This means:
 
 ## Array Handling
 
-Arrays of `@AgentSDK` classes support indexed traversal and whole-object reads. The macro recognizes `[T]` syntax and generates index-based dispatch:
+Arrays of `@SwiftUITap` classes support indexed traversal and whole-object reads. The macro recognizes `[T]` syntax and generates index-based dispatch:
 
 ```swift
 case "todos":
@@ -454,7 +454,7 @@ This is why nested traversal uses runtime `as? AgentDispatchable` checks, and wh
 
 ### Macro Type
 
-`@AgentSDK` is an **extension macro**:
+`@SwiftUITap` is an **extension macro**:
 - Adds `AgentDispatchable` conformance via extension
 - Generates `__agentGet`, `__agentSet`, `__agentCall`, `__agentSnapshot` in the extension
 - No member injection needed — everything lives in the extension
@@ -527,17 +527,17 @@ Unchanged. The root state class has a computed `var __doc__: String` covering th
 ### Swift Package (SPM)
 
 ```
-SwiftAgentSDK/
+SwiftUITap/
 ├── Package.swift
 ├── Sources/
-│   ├── SwiftAgentSDK/
-│   │   ├── SwiftAgentSDK.swift       # Public API: SwiftAgentSDK.poll(state:server:)
-│   │   ├── AgentDispatchable.swift    # Protocol + AgentResult + @AgentSDK macro declaration
+│   ├── SwiftUITap/
+│   │   ├── SwiftUITap.swift       # Public API: SwiftUITap.poll(state:server:)
+│   │   ├── AgentDispatchable.swift    # Protocol + AgentResult + @SwiftUITap macro declaration
 │   │   ├── AgentPath.swift            # Path splitting utility
 │   │   ├── Poller.swift               # URLSession long-poll loop
 │   │   └── Dispatcher.swift           # Routes get/set/call via AgentDispatchable
-│   └── SwiftAgentSDKMacros/
-│       ├── AgentSDKMacro.swift        # ExtensionMacro implementation (SwiftSyntax)
+│   └── SwiftUITapMacros/
+│       ├── SwiftUITapMacro.swift        # ExtensionMacro implementation (SwiftSyntax)
 │       └── Plugin.swift               # CompilerPlugin entry point
 ├── server/
 │   ├── index.ts                       # Bun HTTP server
@@ -556,22 +556,22 @@ Unchanged from v1.
 
 ## Integration Checklist
 
-- Add `SwiftAgentSDK` SPM dependency
-- Add `@AgentSDK` to each state class (root + children)
+- Add `SwiftUITap` SPM dependency
+- Add `@SwiftUITap` to each state class (root + children)
 - Add `@Observable` as usual for SwiftUI
 - **Explicit type annotations** on all agent-exposed properties (`var x: Type = ...`)
 - **Labeled params with primitive types** on all agent-exposed methods
 - Add `var __doc__: String` computed property on the root
 - Use normal Swift `[T]` arrays, not `NSMutableArray`
 - Start server: `bunx agentsdk-server --port 9876`
-- Call `SwiftAgentSDK.poll(state:server:)` in `.onAppear` or use a global instance — **never in init()**
+- Call `SwiftUITap.poll(state:server:)` in `.onAppear` or use a global instance — **never in init()**
 - Anything without an explicit type annotation or with unsupported types is silently skipped
 
 ---
 
 ## v1 vs v2 Comparison
 
-| | v1 (`@objc dynamic` + KVC) | v2 (`@AgentSDK` macro) |
+| | v1 (`@objc dynamic` + KVC) | v2 (`@SwiftUITap` macro) |
 |---|---|---|
 | NSObject required | Yes | No |
 | Array type | `NSMutableArray` | `[T]` |

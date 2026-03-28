@@ -4,15 +4,15 @@ import PackageDescription
 import CompilerPluginSupport
 
 let package = Package(
-    name: "SwiftAgentSDK",
+    name: "SwiftUITap",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
     ],
     products: [
         .library(
-            name: "SwiftAgentSDK",
-            targets: ["SwiftAgentSDK"]
+            name: "SwiftUITap",
+            targets: ["SwiftUITap"]
         ),
     ],
     dependencies: [
@@ -20,22 +20,22 @@ let package = Package(
     ],
     targets: [
         .macro(
-            name: "SwiftAgentSDKMacros",
+            name: "SwiftUITapMacros",
             dependencies: [
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ],
-            path: "Sources/SwiftAgentSDKMacros"
+            path: "Sources/SwiftUITapMacros"
         ),
         .target(
-            name: "SwiftAgentSDK",
-            dependencies: ["SwiftAgentSDKMacros"],
-            path: "Sources/SwiftAgentSDK"
+            name: "SwiftUITap",
+            dependencies: ["SwiftUITapMacros"],
+            path: "Sources/SwiftUITap"
         ),
         .testTarget(
-            name: "SwiftAgentSDKTests",
+            name: "SwiftUITapTests",
             dependencies: [
-                "SwiftAgentSDKMacros",
+                "SwiftUITapMacros",
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
             ]
         ),

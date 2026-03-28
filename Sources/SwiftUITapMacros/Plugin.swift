@@ -2,8 +2,8 @@ import SwiftCompilerPlugin
 import SwiftSyntaxMacros
 
 @main
-struct SwiftAgentSDKPlugin: CompilerPlugin {
+struct SwiftUITapPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
-        AgentSDKMacro.self,
+        SwiftUITapMacro.self,
     ]
 }

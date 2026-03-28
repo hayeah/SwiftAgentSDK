@@ -1,10 +1,10 @@
 ---
-overview: Design spec for a reusable Swift package (SwiftAgentSDK) that makes any SwiftUI app agent-drivable. Uses @objc dynamic + KVC for property access, NSInvocation for typed method dispatch, and a minimal JSONL-over-TCP protocol with just three operations (get/set/call).
+overview: Design spec for a reusable Swift package (SwiftUITap) that makes any SwiftUI app agent-drivable. Uses @objc dynamic + KVC for property access, NSInvocation for typed method dispatch, and a minimal JSONL-over-TCP protocol with just three operations (get/set/call).
 tags:
   - spec
 ---
 
-# SwiftAgentSDK — Reusable Library Spec
+# SwiftUITap — Reusable Library Spec
 
 ## Goal
 
@@ -19,7 +19,7 @@ A drop-in Swift package that makes any SwiftUI app agent-drivable: an AI agent (
 The SDK exploits ObjC runtime for string-based property access. App state classes inherit from `NSObject` and mark properties `@objc dynamic`. This gives us `value(forKeyPath:)` and `setValue(_:forKeyPath:)` — full dynamic dispatch with zero boilerplate.
 
 ```swift
-import SwiftAgentSDK
+import SwiftUITap
 
 @Observable
 final class AppState: NSObject {
@@ -313,7 +313,7 @@ AGENTSDK_URL = http://192.168.1.100:9876     // device scheme
 Reference in Info.plist:
 
 ```xml
-<key>SwiftAgentSDKURL</key>
+<key>SwiftUITapURL</key>
 <string>$(AGENTSDK_URL)</string>
 ```
 
@@ -339,8 +339,8 @@ struct MyApp: App {
 
     init() {
         #if DEBUG
-        if let url = Bundle.main.infoDictionary?["SwiftAgentSDKURL"] as? String {
-            SwiftAgentSDK.poll(state: appState, server: url)
+        if let url = Bundle.main.infoDictionary?["SwiftUITapURL"] as? String {
+            SwiftUITap.poll(state: appState, server: url)
         }
         #endif
     }
@@ -487,25 +487,25 @@ The SDK ships as a Swift package. Apps add it as a dependency:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/hayeah/SwiftAgentSDK.git", from: "0.1.0")
+    .package(url: "https://github.com/hayeah/SwiftUITap.git", from: "0.1.0")
 ]
 ```
 
 Package contents:
 
 ```
-SwiftAgentSDK/
+SwiftUITap/
 ├── Package.swift
 ├── Sources/
-│   └── SwiftAgentSDK/
-│       ├── SwiftAgentSDK.swift          # Public API: SwiftAgentSDK.poll(state:server:)
+│   └── SwiftUITap/
+│       ├── SwiftUITap.swift          # Public API: SwiftUITap.poll(state:server:)
 │       ├── Poller.swift            # URLSession long-poll loop
 │       ├── Dispatcher.swift        # get/set/call routing, KVC + NSInvocation
 │       └── ObjC/
 │           ├── AgentDispatch.h     # NSInvocation bridge header
 │           └── AgentDispatch.m     # NSInvocation-based method dispatch
 └── Tests/
-    └── SwiftAgentSDKTests/
+    └── SwiftUITapTests/
 ```
 
 The ObjC file (`AgentDispatch.m`) is the only non-Swift code — handles `NSInvocation` which isn't available in Swift.
@@ -575,7 +575,7 @@ Publish as an npm package (`agentsdk-server`) so it's runnable via `bunx` with n
 
 ## Integration Checklist
 
-- **App side**: add `SwiftAgentSDK` SPM dependency
+- **App side**: add `SwiftUITap` SPM dependency
 - Make root state class inherit `NSObject`
 - Mark exposed properties `@objc dynamic`
 - Add a `__doc__` computed property

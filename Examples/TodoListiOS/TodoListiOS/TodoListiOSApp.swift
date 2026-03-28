@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftAgentSDK
+import SwiftUITap
 
 private let sharedAppState = AppState()
 
@@ -14,7 +14,7 @@ struct TodoListiOSApp: App {
                     #if DEBUG
                     let serverURL = ProcessInfo.processInfo.environment["AGENTSDK_URL"]
                         ?? "http://localhost:9876"
-                    SwiftAgentSDK.poll(state: sharedAppState, server: serverURL)
+                    SwiftUITap.poll(state: sharedAppState, server: serverURL)
                     #endif
                 }
         }

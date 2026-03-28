@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftAgentSDK
+import SwiftUITap
 
 struct ContentView: View {
     @Environment(AppState.self) var appState

@@ -3,21 +3,21 @@ name: swift-agent-sdk
 description: Make SwiftUI apps agent-drivable via get/set/call over HTTP. Use when building iOS/macOS apps that AI agents can inspect and control programmatically.
 ---
 
-# SwiftAgentSDK
+# SwiftUITap
 
 A Swift package that makes any SwiftUI app agent-drivable. An AI agent can read state, set properties, and call methods — all over HTTP with `curl`.
 
-Add `@AgentSDK` to your `@Observable` classes. The macro generates all the dispatch code. No NSObject, no KVC, no runtime reflection.
+Add `@SwiftUITap` to your `@Observable` classes. The macro generates all the dispatch code. No NSObject, no KVC, no runtime reflection.
 
 ## Quick Start
 
 Add the SPM dependency, then mark your state classes:
 
 ```swift
-import SwiftAgentSDK
+import SwiftUITap
 
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class AppState {
@@ -54,7 +54,7 @@ final class AppState {
 }
 
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class SettingsState {
@@ -63,7 +63,7 @@ final class SettingsState {
 }
 
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class TodoItem: Identifiable {
@@ -91,7 +91,7 @@ struct MyApp: App {
                 .agentInspectable()  // enables view tree + screenshots
                 .onAppear {
                     #if DEBUG
-                    SwiftAgentSDK.poll(state: sharedAppState, server: "http://localhost:9876")
+                    SwiftUITap.poll(state: sharedAppState, server: "http://localhost:9876")
                     #endif
                 }
         }
@@ -230,7 +230,7 @@ The macro generates dispatch code by parsing your class syntax. It needs **expli
 
 ```swift
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class AppState {
@@ -268,7 +268,7 @@ final class AppState {
 
 ```swift
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class AppState {
@@ -420,14 +420,14 @@ var __doc__: String {
 
 The app is an HTTP **client** that long-polls the server. The agent sends commands via `POST /request` (state) or `POST /view` (view inspection). The server pairs them.
 
-- `POST /request` — state operations: get/set/call on `@AgentSDK` properties
+- `POST /request` — state operations: get/set/call on `@SwiftUITap` properties
 - `POST /view` — view inspection: tree hierarchy dump, screenshots (full or cropped)
 - No server on the phone — avoids iOS sandbox issues
 - Works with simulator and on-device (phone polls dev machine)
 
 ## App Setup
 
-**Do NOT call `SwiftAgentSDK.poll()` in `init()`.** SwiftUI's `@State` isn't wired up during `init()`, so you'd be polling on a throwaway instance. Use a global instance or `.onAppear`:
+**Do NOT call `SwiftUITap.poll()` in `init()`.** SwiftUI's `@State` isn't wired up during `init()`, so you'd be polling on a throwaway instance. Use a global instance or `.onAppear`:
 
 ```swift
 private let sharedState = AppState()
@@ -442,7 +442,7 @@ struct MyApp: App {
                     #if DEBUG
                     let url = ProcessInfo.processInfo.environment["AGENTSDK_URL"]
                         ?? "http://localhost:9876"
-                    SwiftAgentSDK.poll(state: sharedState, server: url)
+                    SwiftUITap.poll(state: sharedState, server: url)
                     #endif
                 }
         }
@@ -452,11 +452,11 @@ struct MyApp: App {
 
 ## Disabling for Production
 
-Wrap `@AgentSDK` in `#if DEBUG` so release builds have zero agent overhead — no dispatch code, no protocol conformance:
+Wrap `@SwiftUITap` in `#if DEBUG` so release builds have zero agent overhead — no dispatch code, no protocol conformance:
 
 ```swift
 #if DEBUG
-@AgentSDK
+@SwiftUITap
 #endif
 @Observable
 final class AppState {
@@ -483,7 +483,7 @@ curl localhost:9876/health
 
 ## What the Macro Generates
 
-`@AgentSDK` is an extension macro. For each class it generates:
+`@SwiftUITap` is an extension macro. For each class it generates:
 
 - `__agentGet(_ path:)` — switch table for property reads, recursive traversal
 - `__agentSet(_ path:, value:)` — switch table for property writes
@@ -492,17 +492,17 @@ curl localhost:9876/health
 
 All methods use the `__` prefix to avoid collisions with your own code.
 
-The macro uses runtime `as? AgentDispatchable` checks for child state traversal — no cross-file type resolution needed. If a child class has `@AgentSDK`, traversal works. If not, it returns nil.
+The macro uses runtime `as? AgentDispatchable` checks for child state traversal — no cross-file type resolution needed. If a child class has `@SwiftUITap`, traversal works. If not, it returns nil.
 
 ## Package Structure
 
 ```
-SwiftAgentSDK/
+SwiftUITap/
 ├── Package.swift
 ├── Sources/
-│   ├── SwiftAgentSDK/
-│   │   ├── SwiftAgentSDK.swift         # Public API: poll(state:server:)
-│   │   ├── AgentDispatchable.swift      # Protocol, AgentResult, @AgentSDK macro decl
+│   ├── SwiftUITap/
+│   │   ├── SwiftUITap.swift         # Public API: poll(state:server:)
+│   │   ├── AgentDispatchable.swift      # Protocol, AgentResult, @SwiftUITap macro decl
 │   │   ├── AgentPath.swift              # Dot-path splitting
 │   │   ├── Poller.swift                 # URLSession long-poll loop
 │   │   ├── Dispatcher.swift             # Routes get/set/call
@@ -510,8 +510,8 @@ SwiftAgentSDK/
 │   │   ├── AgentInspectable.swift       # .agentInspectable() root modifier
 │   │   ├── AgentViewStore.swift         # View tree + screenshot dispatch
 │   │   └── AgentViewFrameKey.swift      # PreferenceKey for anchor frames
-│   └── SwiftAgentSDKMacros/
-│       ├── AgentSDKMacro.swift          # ExtensionMacro (SwiftSyntax)
+│   └── SwiftUITapMacros/
+│       ├── SwiftUITapMacro.swift          # ExtensionMacro (SwiftSyntax)
 │       └── Plugin.swift                 # CompilerPlugin entry point
 ├── server/
 │   ├── index.ts                         # Bun HTTP relay server

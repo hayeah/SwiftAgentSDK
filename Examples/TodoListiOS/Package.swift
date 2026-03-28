@@ -8,12 +8,12 @@ let package = Package(
         .iOS(.v17),
     ],
     dependencies: [
-        .package(name: "SwiftAgentSDK", path: "../../"),
+        .package(name: "SwiftUITap", path: "../../"),
     ],
     targets: [
         .executableTarget(
             name: "TodoListiOS",
-            dependencies: [.product(name: "SwiftAgentSDK", package: "SwiftAgentSDK")],
+            dependencies: [.product(name: "SwiftUITap", package: "SwiftUITap")],
             path: "TodoListiOS"
         ),
     ]
