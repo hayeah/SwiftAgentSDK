@@ -214,7 +214,10 @@ public final class AgentViewStore {
 
         let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
         let image = renderer.image { ctx in
-            view.layer.render(in: ctx.cgContext)
+            // drawHierarchy captures the actual composited screen output
+            // including nav bar blur, vibrancy, and other visual effects.
+            // layer.render misses these.
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
         }
 
         guard let pngData = image.pngData() else {
