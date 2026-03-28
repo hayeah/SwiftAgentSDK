@@ -1,0 +1,306 @@
+#!/usr/bin/env bun
+
+/**
+ * swiftui-tap — CLI for SwiftAgentSDK
+ *
+ * Usage:
+ *   swiftui-tap server [--port 9876] [--debug]
+ *   swiftui-tap view tree [id] [--json]
+ *   swiftui-tap view screenshot [id] [-o file] [--format png|jpg] [--scale N]
+ *   swiftui-tap state get <path>
+ *   swiftui-tap state set <path> <value>
+ *   swiftui-tap state call <method> [key=value ...]
+ *
+ * Env: SWIFTUI_TAP_URL (default: http://localhost:9876)
+ */
+
+const BASE_URL = process.env.SWIFTUI_TAP_URL || "http://localhost:9876";
+
+// --- HTTP helpers ---
+
+async function postJSON(path: string, body: any, timeout = 30000): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const resp = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return await resp.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function requestState(payload: any) {
+  return postJSON("/request", payload);
+}
+
+function requestView(payload: any, timeout = 60000) {
+  return postJSON("/view", payload, timeout);
+}
+
+// --- Tree formatting ---
+
+function roundRect(r: any) {
+  if (!r) return r;
+  const rd = (n: number) => Math.round(n * 10) / 10;
+  return { x: rd(r.x), y: rd(r.y), w: rd(r.w), h: rd(r.h) };
+}
+
+function normalizeTree(node: any): any {
+  if (!node) return node;
+  if (Array.isArray(node)) {
+    return node
+      .map(normalizeTree)
+      .sort((a, b) => (a.frame?.y ?? 0) - (b.frame?.y ?? 0));
+  }
+  const rd = (n: number | null) => (n != null ? Math.round(n * 10) / 10 : null);
+  const out: any = { id: node.id };
+  if (node.frame) out.frame = roundRect(node.frame);
+  if (node.relativeFrame) out.relativeFrame = roundRect(node.relativeFrame);
+  if (node.proposed)
+    out.proposed = { w: rd(node.proposed.w), h: rd(node.proposed.h) };
+  if (node.reported)
+    out.reported = { w: rd(node.reported.w), h: rd(node.reported.h) };
+  if (node.children) {
+    out.children = node.children
+      .map(normalizeTree)
+      .sort((a: any, b: any) => {
+        const dy = (a.frame?.y ?? 0) - (b.frame?.y ?? 0);
+        if (Math.abs(dy) > 1) return dy;
+        return (a.frame?.x ?? 0) - (b.frame?.x ?? 0);
+      });
+  }
+  return out;
+}
+
+function fmtRect(r: any): string {
+  return `(${r.x},${r.y} ${r.w}x${r.h})`;
+}
+
+function fmtSize(s: any): string {
+  const w = s.w != null ? s.w : "?";
+  const h = s.h != null ? s.h : "?";
+  return `${w}x${h}`;
+}
+
+function treeToText(node: any, indent = 0, isLast = true, prefix = ""): string {
+  const lines: string[] = [];
+
+  const connector =
+    indent === 0 ? "" : isLast ? "└─ " : "├─ ";
+
+  const f = node.frame;
+  const frameStr = f ? fmtRect(f) : "";
+  lines.push(`${prefix}${connector}${node.id}  ${frameStr}`);
+
+  const childPrefix =
+    prefix + (isLast || indent === 0 ? "   " : "│  ");
+
+  const parts: string[] = [];
+  if (node.relativeFrame) parts.push(`rel=(${node.relativeFrame.x},${node.relativeFrame.y})`);
+  if (node.proposed) parts.push(`proposed=${fmtSize(node.proposed)}`);
+  if (node.reported) parts.push(`reported=${fmtSize(node.reported)}`);
+  if (parts.length) lines.push(`${childPrefix}  ${parts.join("  ")}`);
+
+  const children = node.children || [];
+  for (let i = 0; i < children.length; i++) {
+    lines.push(treeToText(children[i], indent + 1, i === children.length - 1, childPrefix));
+  }
+
+  return lines.join("\n");
+}
+
+// --- Value parsing ---
+
+function parseValue(raw: string): any {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+// --- Commands ---
+
+async function cmdServer(args: string[]) {
+  // Just exec the server
+  const serverArgs = ["run", `${import.meta.dir}/index.ts`, ...args];
+  const proc = Bun.spawn(["bun", ...serverArgs], {
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  await proc.exited;
+}
+
+async function cmdViewTree(args: string[]) {
+  let id: string | undefined;
+  let jsonOutput = false;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--json" || args[i] === "-j") jsonOutput = true;
+    else if (!args[i].startsWith("-")) id = args[i];
+  }
+
+  const payload: any = { type: "tree" };
+  if (id) payload.id = id;
+
+  const result = await requestView(payload);
+  if (result.error) {
+    console.error("Error:", result.error);
+    process.exit(1);
+  }
+
+  const data = normalizeTree(result.data);
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(data, null, 2));
+  } else {
+    if (Array.isArray(data)) {
+      for (const root of data) console.log(treeToText(root));
+    } else {
+      console.log(treeToText(data));
+    }
+  }
+}
+
+async function cmdViewScreenshot(args: string[]) {
+  let id: string | undefined;
+  let output: string | undefined;
+  let format = "png";
+  let quality = 0.8;
+  let scale: number | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-o" || args[i] === "--output") output = args[++i];
+    else if (args[i] === "-f" || args[i] === "--format") format = args[++i];
+    else if (args[i] === "-q" || args[i] === "--quality") quality = parseFloat(args[++i]);
+    else if (args[i] === "-s" || args[i] === "--scale") scale = parseFloat(args[++i]);
+    else if (!args[i].startsWith("-")) id = args[i];
+  }
+
+  const payload: any = { type: "screenshot" };
+  if (id) payload.id = id;
+  if (format !== "png") payload.format = format;
+  if (quality !== 0.8) payload.quality = quality;
+  if (scale != null) payload.scale = scale;
+
+  const result = await requestView(payload, 60000);
+  if (result.error) {
+    console.error("Error:", result.error);
+    process.exit(1);
+  }
+
+  const data = result.data;
+  const imageBytes = Buffer.from(data.image, "base64");
+  const ext = data.format === "jpg" || data.format === "jpeg" ? "jpg" : "png";
+
+  if (!output) {
+    const suffix = id ? id.replace(/\./g, "_") : "full";
+    output = `screenshot_${suffix}.${ext}`;
+  }
+
+  await Bun.write(output, imageBytes);
+  const size = data.size || {};
+  console.log(
+    `Saved ${output} (${size.w}x${size.h} ${data.format}, ${imageBytes.length} bytes)`
+  );
+}
+
+async function cmdStateGet(args: string[]) {
+  const path = args[0] || ".";
+  const raw = args.includes("--raw") || args.includes("-r");
+
+  const result = await requestState({ type: "get", path });
+  if (result.error) {
+    console.error("Error:", result.error);
+    process.exit(1);
+  }
+
+  console.log(JSON.stringify(result.data, null, 2));
+}
+
+async function cmdStateSet(args: string[]) {
+  const path = args[0];
+  const value = parseValue(args[1]);
+
+  if (!path || args[1] === undefined) {
+    console.error("Usage: swiftui-tap state set <path> <value>");
+    process.exit(1);
+  }
+
+  const result = await requestState({ type: "set", path, value });
+  if (result.error) {
+    console.error("Error:", result.error);
+    process.exit(1);
+  }
+
+  console.log(`OK set ${path} = ${JSON.stringify(value)}`);
+}
+
+async function cmdStateCall(args: string[]) {
+  const method = args[0];
+  if (!method) {
+    console.error("Usage: swiftui-tap state call <method> [key=value ...]");
+    process.exit(1);
+  }
+
+  const params: any = {};
+  for (let i = 1; i < args.length; i++) {
+    const eq = args[i].indexOf("=");
+    if (eq < 0) {
+      console.error(`Param must be key=value, got: ${args[i]}`);
+      process.exit(1);
+    }
+    const key = args[i].slice(0, eq);
+    const val = parseValue(args[i].slice(eq + 1));
+    params[key] = val;
+  }
+
+  const result = await requestState({ type: "call", method, params });
+  if (result.error) {
+    console.error("Error:", result.error);
+    process.exit(1);
+  }
+
+  if (result.data != null) {
+    console.log(JSON.stringify(result.data, null, 2));
+  } else {
+    console.log("OK");
+  }
+}
+
+// --- Main ---
+
+const args = process.argv.slice(2);
+const cmd = args[0];
+const sub = args[1];
+const rest = args.slice(2);
+
+if (cmd === "server") {
+  await cmdServer(rest);
+} else if (cmd === "view" && sub === "tree") {
+  await cmdViewTree(rest);
+} else if (cmd === "view" && sub === "screenshot") {
+  await cmdViewScreenshot(rest);
+} else if (cmd === "state" && sub === "get") {
+  await cmdStateGet(rest);
+} else if (cmd === "state" && sub === "set") {
+  await cmdStateSet(rest);
+} else if (cmd === "state" && sub === "call") {
+  await cmdStateCall(rest);
+} else {
+  console.log(`swiftui-tap — CLI for SwiftAgentSDK
+
+Usage:
+  swiftui-tap server [--port 9876] [--debug]
+  swiftui-tap view tree [id] [--json]
+  swiftui-tap view screenshot [id] [-o file] [--format png|jpg] [--scale N]
+  swiftui-tap state get <path>
+  swiftui-tap state set <path> <value>
+  swiftui-tap state call <method> [key=value ...]
+
+Env: SWIFTUI_TAP_URL (default: http://localhost:9876)`);
+}
