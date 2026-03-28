@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import SwiftAgentSDK
 
+@AgentSDK
 @Observable
 final class AppState {
     var __doc__: String {
@@ -45,7 +46,7 @@ final class AppState {
           set todos.0.title "Buy oat milk instead"
 
         Check all todos:
-          get todos.0.title, get todos.0.isCompleted, etc.
+          get todos
 
         Remove completed:
           call clearCompleted
@@ -86,82 +87,5 @@ final class AppState {
 
     func clearCompleted() {
         todos.removeAll { $0.isCompleted }
-    }
-}
-
-// Hand-written — @AgentSDK macro would generate this
-extension AppState: AgentDispatchable {
-    func __agentGet(_ path: String) -> AgentResult {
-        let (head, tail) = AgentPath.split(path)
-        switch head {
-        case "__doc__": return .value(__doc__)
-        case "newTodoText": return .value(newTodoText)
-        case "todos":
-            guard let tail else {
-                return .value(todos.map { $0.__agentSnapshot() })
-            }
-            let (indexStr, rest) = AgentPath.split(tail)
-            guard let index = Int(indexStr), index >= 0, index < todos.count else {
-                return .error("index out of bounds: \(indexStr) (count: \(todos.count))")
-            }
-            guard let rest else {
-                return .value(todos[index].__agentSnapshot())
-            }
-            return todos[index].__agentGet(rest)
-        default: return .error("unknown property: \(head)")
-        }
-    }
-
-    func __agentSet(_ path: String, value: Any?) -> AgentResult {
-        let (head, tail) = AgentPath.split(path)
-        switch head {
-        case "newTodoText":
-            guard let v = value as? String else { return .error("type mismatch: newTodoText expects String") }
-            newTodoText = v
-            return .value(nil)
-        case "todos":
-            guard let tail else { return .error("cannot replace todos array") }
-            let (indexStr, rest) = AgentPath.split(tail)
-            guard let index = Int(indexStr), index >= 0, index < todos.count else {
-                return .error("index out of bounds: \(indexStr)")
-            }
-            guard let rest else { return .error("cannot replace array element") }
-            return todos[index].__agentSet(rest, value: value)
-        default: return .error("unknown property: \(head)")
-        }
-    }
-
-    func __agentCall(_ method: String, params: [String: Any]) -> AgentResult {
-        switch method {
-        case "addTodo":
-            guard let title = params["title"] as? String else {
-                return .error("missing param: title (String)")
-            }
-            let result = addTodo(title: title)
-            return .value(result)
-        case "toggleTodo":
-            guard let index = (params["index"] as? NSNumber)?.intValue else {
-                return .error("missing param: index (Int)")
-            }
-            toggleTodo(index: index)
-            return .value(nil)
-        case "removeTodo":
-            guard let index = (params["index"] as? NSNumber)?.intValue else {
-                return .error("missing param: index (Int)")
-            }
-            removeTodo(index: index)
-            return .value(nil)
-        case "clearCompleted":
-            clearCompleted()
-            return .value(nil)
-        default: return .error("unknown method: \(method)")
-        }
-    }
-
-    func __agentSnapshot() -> [String: Any] {
-        return [
-            "todos": todos.map { $0.__agentSnapshot() },
-            "newTodoText": newTodoText,
-        ]
     }
 }

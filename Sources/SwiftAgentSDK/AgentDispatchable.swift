@@ -1,5 +1,10 @@
 import Foundation
 
+/// Attached macro that generates AgentDispatchable conformance.
+/// Apply to @Observable classes to make them agent-drivable.
+@attached(extension, conformances: AgentDispatchable, names: named(__agentGet), named(__agentSet), named(__agentCall), named(__agentSnapshot))
+public macro AgentSDK() = #externalMacro(module: "SwiftAgentSDKMacros", type: "AgentSDKMacro")
+
 /// Protocol that @AgentSDK macro generates conformance for.
 /// Provides string-based get/set/call dispatch on the state tree.
 public protocol AgentDispatchable: AnyObject {
