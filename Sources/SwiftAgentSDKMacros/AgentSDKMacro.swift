@@ -80,7 +80,7 @@ enum PropertyCategory {
 struct MethodInfo {
     let name: String
     let params: [(label: String, type: String)]
-    let hasReturn: Bool
+    let returnType: String? // nil = Void
 }
 
 private let primitiveTypes: Set<String> = ["String", "Int", "Double", "Bool"]
@@ -179,12 +179,11 @@ func extractMethods(from declaration: some DeclGroupSyntax) -> [MethodInfo] {
         // Skip init/deinit (init won't appear as FunctionDeclSyntax, but just in case)
         if name == "init" || name == "deinit" { continue }
 
-        // Extract params — all must have labels and primitive types
+        // Extract params — all must have labels
         var params: [(label: String, type: String)] = []
         var allSupported = true
 
         for param in funcDecl.signature.parameterClause.parameters {
-            // firstName is the external label, secondName is the internal name
             let label = param.firstName.text
             if label == "_" {
                 allSupported = false
@@ -196,19 +195,14 @@ func extractMethods(from declaration: some DeclGroupSyntax) -> [MethodInfo] {
                 break
             }
 
-            if !primitiveTypes.contains(typeStr) {
-                allSupported = false
-                break
-            }
-
             params.append((label: label, type: typeStr))
         }
 
         if !allSupported { continue }
 
-        let hasReturn = funcDecl.signature.returnClause != nil
+        let returnType = funcDecl.signature.returnClause?.type.trimmedDescription
 
-        results.append(MethodInfo(name: name, params: params, hasReturn: hasReturn))
+        results.append(MethodInfo(name: name, params: params, returnType: returnType))
     }
 
     return results
@@ -340,15 +334,25 @@ func generateAgentCall(methods: [MethodInfo]) -> String {
 
         // Generate param extraction
         for param in method.params {
-            let cast = castExpression(for: param.type, from: "params[\"\(param.label)\"]")
-            lines.append("                guard let \(param.label) = \(cast) else { return .error(\"missing param: \(param.label) (\(param.type))\") }")
+            if primitiveTypes.contains(param.type) {
+                let cast = castExpression(for: param.type, from: "params[\"\(param.label)\"]")
+                lines.append("                guard let \(param.label) = \(cast) else { return .error(\"missing param: \(param.label) (\(param.type))\") }")
+            } else {
+                // Codable param — use __agentDecode
+                lines.append("                guard let \(param.label)Raw = params[\"\(param.label)\"], let \(param.label): \(param.type) = __agentDecode(\(param.label)Raw) else { return .error(\"cannot decode param: \(param.label) (\(param.type))\") }")
+            }
         }
 
         // Generate call
         let args = method.params.map { "\($0.label): \($0.label)" }.joined(separator: ", ")
-        if method.hasReturn {
+        if let returnType = method.returnType {
             lines.append("                let result = \(method.name)(\(args))")
-            lines.append("                return .value(result)")
+            if isPrimitiveOrDict(returnType) {
+                lines.append("                return .value(result)")
+            } else {
+                // Codable return — use __agentEncode
+                lines.append("                return .value(__agentEncode(result))")
+            }
         } else {
             lines.append("                \(method.name)(\(args))")
             lines.append("                return .value(nil)")
@@ -384,6 +388,11 @@ func generateAgentSnapshot(properties: [PropertyInfo]) -> String {
     }
 
     return entries.joined(separator: "\n")
+}
+
+func isPrimitiveOrDict(_ typeStr: String) -> Bool {
+    let base = typeStr.hasSuffix("?") ? String(typeStr.dropLast()) : typeStr
+    return primitiveTypes.contains(base) || base == "[String: Any]"
 }
 
 func castExpression(for typeName: String, from source: String) -> String {

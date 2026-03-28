@@ -88,4 +88,16 @@ final class AppState {
     func clearCompleted() {
         todos.removeAll { $0.isCompleted }
     }
+
+    // Test Codable support
+    func getStats() -> TodoStats {
+        TodoStats(total: todos.count, active: activeTodos.count, completed: completedTodos.count)
+    }
+
+}
+
+struct TodoStats: Codable {
+    var total: Int
+    var active: Int
+    var completed: Int
 }
