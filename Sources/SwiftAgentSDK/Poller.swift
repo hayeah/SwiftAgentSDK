@@ -8,10 +8,9 @@ final class Poller {
     private let session: URLSession
     private var isRunning = false
 
-    init(state: NSObject, serverURL: URL) {
+    init(state: any AgentDispatchable, serverURL: URL) {
         self.dispatcher = Dispatcher(state: state)
         self.serverURL = serverURL
-        // Use a long timeout for the poll request (5 minutes)
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 300
@@ -33,19 +32,15 @@ final class Poller {
     private func pollLoop() async {
         while isRunning {
             do {
-                // POST /poll with optional response body
                 let request = try await fetchNextRequest(previousResponse: nil)
                 await processAndRespond(request)
             } catch {
-                // Connection error — retry after a short delay
                 print("[AgentSDK] Poll error: \(error.localizedDescription). Retrying in 2s...")
                 try? await Task.sleep(for: .seconds(2))
             }
         }
     }
 
-    /// Fetch the next request from the server via long-poll.
-    /// If previousResponse is provided, it's sent as the poll body (to deliver the response for the previous request).
     private func fetchNextRequest(previousResponse: [String: Any]?) async throws -> [String: Any] {
         let pollURL = serverURL.appendingPathComponent("poll")
         var urlRequest = URLRequest(url: pollURL)
@@ -65,13 +60,11 @@ final class Poller {
         return json
     }
 
-    /// Dispatch the request on MainActor and send the response back.
     private func processAndRespond(_ request: [String: Any]) async {
-        // Dispatch on MainActor (we're already on MainActor)
-        let response = dispatcher.dispatch(request)
+        let result = dispatcher.dispatch(request)
 
-        // Include the request ID in the response
-        var fullResponse = response
+        // Build response with request ID
+        var fullResponse = result.json
         if let id = request["id"] {
             fullResponse["id"] = id
         }
@@ -80,7 +73,6 @@ final class Poller {
         while isRunning {
             do {
                 let nextRequest = try await fetchNextRequest(previousResponse: fullResponse)
-                // Got next request — process it
                 await processAndRespond(nextRequest)
                 return
             } catch {

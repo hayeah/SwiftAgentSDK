@@ -16,13 +16,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "AgentDispatchObjC",
-            path: "Sources/AgentDispatchObjC",
-            publicHeadersPath: "include"
-        ),
-        .target(
             name: "SwiftAgentSDK",
-            dependencies: ["AgentDispatchObjC"],
             path: "Sources/SwiftAgentSDK"
         ),
     ]

@@ -26,14 +26,14 @@ struct ContentView: View {
             .padding(.bottom)
 
             // List
-            if (appState.todos as! [TodoItem]).isEmpty {
+            if appState.todos.isEmpty {
                 Spacer()
                 Text("No todos yet")
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
                 List {
-                    ForEach(Array((appState.todos as! [TodoItem]).enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(appState.todos.enumerated()), id: \.element.id) { index, item in
                         TodoRow(item: item) {
                             appState.toggleTodo(index: index)
                         } onDelete: {
