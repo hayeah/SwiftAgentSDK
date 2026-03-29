@@ -243,20 +243,19 @@ async function cmdStateSet(args: string[]) {
 async function cmdStateCall(args: string[]) {
   const method = args[0];
   if (!method) {
-    console.error("Usage: swiftui-tap state call <method> [key=value ...]");
+    console.error("Usage: swiftui-tap state call <method> [json]");
     process.exit(1);
   }
 
-  const params: any = {};
-  for (let i = 1; i < args.length; i++) {
-    const eq = args[i].indexOf("=");
-    if (eq < 0) {
-      console.error(`Param must be key=value, got: ${args[i]}`);
+  let params: any = {};
+  if (args.length > 1) {
+    const json = args.slice(1).join(" ");
+    try {
+      params = JSON.parse(json);
+    } catch {
+      console.error(`Invalid JSON: ${json}`);
       process.exit(1);
     }
-    const key = args[i].slice(0, eq);
-    const val = parseValue(args[i].slice(eq + 1));
-    params[key] = val;
   }
 
   const result = await requestState({ type: "call", method, params });

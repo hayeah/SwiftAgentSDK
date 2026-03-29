@@ -159,14 +159,19 @@ swiftui-tap state get counter
 # Snapshot the whole state tree
 swiftui-tap state get .
 
-# Set a property
+# Set a property (values are JSON)
 swiftui-tap state set counter 42
+swiftui-tap state set label '"hello"'
+swiftui-tap state set darkMode true
+
+# Unquoted strings work too (bare words that aren't valid JSON become strings)
+swiftui-tap state set label hello
 
 # Call a method
-swiftui-tap state call addTodo title="Buy milk"
+swiftui-tap state call addTodo '{"title": "Buy milk"}'
 
 # Call with multiple params
-swiftui-tap state call openBook bookID="abc" chapter=0
+swiftui-tap state call openBook '{"bookID": "abc", "chapter": 0}'
 ```
 
 ### View inspection
