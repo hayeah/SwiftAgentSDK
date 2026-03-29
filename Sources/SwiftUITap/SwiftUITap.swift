@@ -8,10 +8,10 @@ public enum SwiftUITap {
     /// Must be called from the main actor (typically in your App's init).
     ///
     /// - Parameters:
-    ///   - state: The root state object (must conform to AgentDispatchable)
+    ///   - state: The root state object (must conform to TapDispatchable)
     ///   - server: The server URL, e.g. "http://localhost:9876"
     @MainActor
-    public static func poll(state: any AgentDispatchable, server: String) {
+    public static func poll(state: any TapDispatchable, server: String) {
         guard let url = URL(string: server) else {
             print("[SwiftUITap] Invalid server URL: \(server)")
             return

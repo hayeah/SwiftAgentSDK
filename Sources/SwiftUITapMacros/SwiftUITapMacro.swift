@@ -21,31 +21,31 @@ public struct SwiftUITapMacro: ExtensionMacro {
         let snapshotBody = generateAgentSnapshot(properties: properties)
 
         let extensionDecl: DeclSyntax = """
-        extension \(raw: className): AgentDispatchable {
-            func __agentGet(_ path: String) -> AgentResult {
-                let (head, tail) = AgentPath.split(path)
+        extension \(raw: className): TapDispatchable {
+            func __tapGet(_ path: String) -> TapResult {
+                let (head, tail) = TapPath.split(path)
                 switch head {
         \(raw: getBody)
                 default: return .error("unknown property: \\(head)")
                 }
             }
 
-            func __agentSet(_ path: String, value: Any?) -> AgentResult {
-                let (head, tail) = AgentPath.split(path)
+            func __tapSet(_ path: String, value: Any?) -> TapResult {
+                let (head, tail) = TapPath.split(path)
                 switch head {
         \(raw: setBody)
                 default: return .error("unknown property: \\(head)")
                 }
             }
 
-            func __agentCall(_ method: String, params: [String: Any]) -> AgentResult {
+            func __tapCall(_ method: String, params: [String: Any]) -> TapResult {
                 switch method {
         \(raw: callBody)
                 default: return .error("unknown method: \\(method)")
                 }
             }
 
-            func __agentSnapshot() -> [String: Any] {
+            func __tapSnapshot() -> [String: Any] {
                 return [
         \(raw: snapshotBody)
                 ]
@@ -73,7 +73,7 @@ enum PropertyCategory {
     case primitive(String)       // String, Int, Double, Bool
     case optionalPrimitive(String) // String?, Int?, etc.
     case array(String)           // [Foo]
-    case childState(String)      // any other single identifier — assume AgentDispatchable
+    case childState(String)      // any other single identifier — assume TapDispatchable
     case unsupported
 }
 
@@ -149,7 +149,7 @@ func categorizeType(_ typeStr: String) -> PropertyCategory {
         return .array(elementType)
     }
 
-    // Single identifier — assume child state (AgentDispatchable at runtime)
+    // Single identifier — assume child state (TapDispatchable at runtime)
     // Must be a simple identifier (no generics, no dots, no brackets)
     let isSimpleIdent = typeStr.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
     if isSimpleIdent && !typeStr.isEmpty {
@@ -230,7 +230,7 @@ func generateAgentGet(properties: [PropertyInfo]) -> String {
                 cases.append("""
                         case "\(prop.name)":
                             guard let tail else { return .value(\(prop.name)) }
-                            let (indexStr, rest) = AgentPath.split(tail)
+                            let (indexStr, rest) = TapPath.split(tail)
                             guard let index = Int(indexStr), index >= 0, index < \(prop.name).count else {
                                 return .error("index out of bounds: \\(indexStr) (count: \\(\(prop.name).count))")
                             }
@@ -242,16 +242,16 @@ func generateAgentGet(properties: [PropertyInfo]) -> String {
                 cases.append("""
                         case "\(prop.name)":
                             guard let tail else {
-                                return .value(\(prop.name).compactMap { ($0 as? AgentDispatchable)?.__agentSnapshot() })
+                                return .value(\(prop.name).compactMap { ($0 as? TapDispatchable)?.__tapSnapshot() })
                             }
-                            let (indexStr, rest) = AgentPath.split(tail)
+                            let (indexStr, rest) = TapPath.split(tail)
                             guard let index = Int(indexStr), index >= 0, index < \(prop.name).count else {
                                 return .error("index out of bounds: \\(indexStr) (count: \\(\(prop.name).count))")
                             }
                             guard let rest else {
-                                return .value((\(prop.name)[index] as? AgentDispatchable)?.__agentSnapshot())
+                                return .value((\(prop.name)[index] as? TapDispatchable)?.__tapSnapshot())
                             }
-                            return (\(prop.name)[index] as? AgentDispatchable)?.__agentGet(rest) ?? .error("not dispatchable: \(prop.name)[]")
+                            return (\(prop.name)[index] as? TapDispatchable)?.__tapGet(rest) ?? .error("not dispatchable: \(prop.name)[]")
                 """)
             }
 
@@ -259,9 +259,9 @@ func generateAgentGet(properties: [PropertyInfo]) -> String {
             cases.append("""
                         case "\(prop.name)":
                             guard let tail else {
-                                return .value((\(prop.name) as? AgentDispatchable)?.__agentSnapshot())
+                                return .value((\(prop.name) as? TapDispatchable)?.__tapSnapshot())
                             }
-                            return (\(prop.name) as? AgentDispatchable)?.__agentGet(tail) ?? .error("not dispatchable: \(prop.name)")
+                            return (\(prop.name) as? TapDispatchable)?.__tapGet(tail) ?? .error("not dispatchable: \(prop.name)")
             """)
 
         case .unsupported:
@@ -302,19 +302,19 @@ func generateAgentSet(properties: [PropertyInfo]) -> String {
             cases.append("""
                         case "\(prop.name)":
                             guard let tail else { return .error("cannot replace \(prop.name) array directly") }
-                            let (indexStr, rest) = AgentPath.split(tail)
+                            let (indexStr, rest) = TapPath.split(tail)
                             guard let index = Int(indexStr), index >= 0, index < \(prop.name).count else {
                                 return .error("index out of bounds: \\(indexStr)")
                             }
                             guard let rest else { return .error("cannot replace array element directly") }
-                            return (\(prop.name)[index] as? AgentDispatchable)?.__agentSet(rest, value: value) ?? .error("not dispatchable: \(prop.name)[]")
+                            return (\(prop.name)[index] as? TapDispatchable)?.__tapSet(rest, value: value) ?? .error("not dispatchable: \(prop.name)[]")
             """)
 
         case .childState:
             cases.append("""
                         case "\(prop.name)":
                             guard let tail else { return .error("cannot replace \(prop.name) object") }
-                            return (\(prop.name) as? AgentDispatchable)?.__agentSet(tail, value: value) ?? .error("not dispatchable: \(prop.name)")
+                            return (\(prop.name) as? TapDispatchable)?.__tapSet(tail, value: value) ?? .error("not dispatchable: \(prop.name)")
             """)
 
         case .unsupported:
@@ -338,8 +338,8 @@ func generateAgentCall(methods: [MethodInfo]) -> String {
                 let cast = castExpression(for: param.type, from: "params[\"\(param.label)\"]")
                 lines.append("                guard let \(param.label) = \(cast) else { return .error(\"missing param: \(param.label) (\(param.type))\") }")
             } else {
-                // Codable param — use __agentDecode
-                lines.append("                guard let \(param.label)Raw = params[\"\(param.label)\"], let \(param.label): \(param.type) = __agentDecode(\(param.label)Raw) else { return .error(\"cannot decode param: \(param.label) (\(param.type))\") }")
+                // Codable param — use __tapDecode
+                lines.append("                guard let \(param.label)Raw = params[\"\(param.label)\"], let \(param.label): \(param.type) = __tapDecode(\(param.label)Raw) else { return .error(\"cannot decode param: \(param.label) (\(param.type))\") }")
             }
         }
 
@@ -350,8 +350,8 @@ func generateAgentCall(methods: [MethodInfo]) -> String {
             if isPrimitiveOrDict(returnType) {
                 lines.append("                return .value(result)")
             } else {
-                // Codable return — use __agentEncode
-                lines.append("                return .value(__agentEncode(result))")
+                // Codable return — use __tapEncode
+                lines.append("                return .value(__tapEncode(result))")
             }
         } else {
             lines.append("                \(method.name)(\(args))")
@@ -376,11 +376,11 @@ func generateAgentSnapshot(properties: [PropertyInfo]) -> String {
             if primitiveTypes.contains(elementType) {
                 entries.append("                \"\(prop.name)\": \(prop.name),")
             } else {
-                entries.append("                \"\(prop.name)\": \(prop.name).compactMap { ($0 as? AgentDispatchable)?.__agentSnapshot() },")
+                entries.append("                \"\(prop.name)\": \(prop.name).compactMap { ($0 as? TapDispatchable)?.__tapSnapshot() },")
             }
 
         case .childState:
-            entries.append("                \"\(prop.name)\": (\(prop.name) as? AgentDispatchable)?.__agentSnapshot() as Any,")
+            entries.append("                \"\(prop.name)\": (\(prop.name) as? TapDispatchable)?.__tapSnapshot() as Any,")
 
         case .unsupported:
             continue

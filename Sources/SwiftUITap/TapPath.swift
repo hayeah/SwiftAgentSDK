@@ -1,7 +1,7 @@
 import Foundation
 
 /// Utility for splitting dot-separated agent paths.
-public enum AgentPath {
+public enum TapPath {
     /// Split "foo.bar.baz" into ("foo", "bar.baz").
     /// Split "foo" into ("foo", nil).
     public static func split(_ path: String) -> (String, String?) {

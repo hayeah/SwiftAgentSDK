@@ -1,5 +1,5 @@
 ---
-name: swift-agent-sdk
+name: swiftui-tap
 description: Make SwiftUI apps agent-drivable via get/set/call over HTTP. Use when building iOS/macOS apps that AI agents can inspect and control programmatically.
 ---
 
@@ -8,6 +8,22 @@ description: Make SwiftUI apps agent-drivable via get/set/call over HTTP. Use wh
 A Swift package that makes any SwiftUI app agent-drivable. An AI agent can read state, set properties, and call methods — all over HTTP with `curl`.
 
 Add `@SwiftUITap` to your `@Observable` classes. The macro generates all the dispatch code. No NSObject, no KVC, no runtime reflection.
+
+## Coding Style Guide
+
+For greenfield projects, follow the **global state tree** pattern described in [`docs/swiftui-state-skill.md`](docs/swiftui-state-skill.md). Key ideas:
+
+- **One root `@Observable` class** (`AppState`) holds the entire app state
+- **Child state classes** get their own `@Observable` + `@SwiftUITap` — one per domain (e.g., `LibraryState`, `ReadingSession`)
+- **Leaf data** (things agents don't need to address by path) are plain structs
+- **Explicit type annotations** on all properties — the macro skips anything without one
+- **`__doc__`** on the root class documents the entire state tree for agents
+- **Direct set** for single-property writes, **action methods** for multi-step operations
+
+See the example apps for a working reference:
+
+- [`Examples/TodoList/`](Examples/TodoList/) — macOS app (`swift build && .build/debug/TodoList`)
+- [`Examples/TodoListiOS/`](Examples/TodoListiOS/) — iOS simulator app (see its [README](Examples/TodoListiOS/README.md) for build instructions)
 
 ## Quick Start
 
@@ -88,7 +104,7 @@ struct MyApp: App {
         WindowGroup {
             ContentView()
                 .environment(sharedAppState)
-                .agentInspectable()  // enables view tree + screenshots
+                .tapInspectable()  // enables view tree + screenshots
                 .onAppear {
                     #if DEBUG
                     SwiftUITap.poll(state: sharedAppState, server: "http://localhost:9876")
@@ -106,13 +122,13 @@ struct ContentView: View {
     var body: some View {
         VStack {
             TextField("Search", text: $query)
-                .agentID("searchField")
+                .tapID("searchField")
             List { ... }
-                .agentID("todoList")
+                .tapID("todoList")
             Button("Add") { ... }
-                .agentID("addButton")
+                .tapID("addButton")
         }
-        .agentID("root")
+        .tapID("root")
     }
 }
 ```
@@ -259,7 +275,7 @@ final class AppState {
 | `String`, `Int`, `Double`, `Bool` | yes | yes | Direct JSON mapping |
 | `String?`, `Int?`, etc. | yes | yes | nil ↔ JSON null |
 | `[T]` | yes | no | Index traversal: `todos.0.title` |
-| Any other identifier | yes | delegate | Runtime `as? AgentDispatchable` check |
+| Any other identifier | yes | delegate | Runtime `as? TapDispatchable` check |
 | `let` properties | yes | no | Read-only |
 | Computed properties | yes | no | Read-only |
 | No type annotation | skipped | skipped | Invisible to agent |
@@ -290,16 +306,16 @@ final class AppState {
 
 **Parameter types:**
 - `String`, `Int`, `Double`, `Bool` → direct JSON cast
-- Any other type → `__agentDecode<T>()` — must conform to `Decodable`
+- Any other type → `__tapDecode<T>()` — must conform to `Decodable`
 
 **Return types:**
 - `Void` → `.value(nil)`
 - Primitives, `[String: Any]?` → passed through
-- Any other type → `__agentEncode(result)` — must conform to `Encodable`
+- Any other type → `__tapEncode(result)` — must conform to `Encodable`
 
 If a type isn't Codable, you get a clear compile error:
 ```
-error: global function '__agentEncode' requires that 'MyType' conform to 'Encodable'
+error: global function '__tapEncode' requires that 'MyType' conform to 'Encodable'
 ```
 
 ### Skipping Is Silent
@@ -485,14 +501,14 @@ curl localhost:9876/health
 
 `@SwiftUITap` is an extension macro. For each class it generates:
 
-- `__agentGet(_ path:)` — switch table for property reads, recursive traversal
-- `__agentSet(_ path:, value:)` — switch table for property writes
-- `__agentCall(_ method:, params:)` — switch table for method dispatch
-- `__agentSnapshot()` — dictionary of all properties for whole-object reads
+- `__tapGet(_ path:)` — switch table for property reads, recursive traversal
+- `__tapSet(_ path:, value:)` — switch table for property writes
+- `__tapCall(_ method:, params:)` — switch table for method dispatch
+- `__tapSnapshot()` — dictionary of all properties for whole-object reads
 
 All methods use the `__` prefix to avoid collisions with your own code.
 
-The macro uses runtime `as? AgentDispatchable` checks for child state traversal — no cross-file type resolution needed. If a child class has `@SwiftUITap`, traversal works. If not, it returns nil.
+The macro uses runtime `as? TapDispatchable` checks for child state traversal — no cross-file type resolution needed. If a child class has `@SwiftUITap`, traversal works. If not, it returns nil.
 
 ## Package Structure
 
@@ -502,14 +518,14 @@ SwiftUITap/
 ├── Sources/
 │   ├── SwiftUITap/
 │   │   ├── SwiftUITap.swift         # Public API: poll(state:server:)
-│   │   ├── AgentDispatchable.swift      # Protocol, AgentResult, @SwiftUITap macro decl
-│   │   ├── AgentPath.swift              # Dot-path splitting
+│   │   ├── TapDispatchable.swift      # Protocol, TapResult, @SwiftUITap macro decl
+│   │   ├── TapPath.swift              # Dot-path splitting
 │   │   ├── Poller.swift                 # URLSession long-poll loop
 │   │   ├── Dispatcher.swift             # Routes get/set/call
-│   │   ├── AgentID.swift                # .agentID() view modifier
-│   │   ├── AgentInspectable.swift       # .agentInspectable() root modifier
-│   │   ├── AgentViewStore.swift         # View tree + screenshot dispatch
-│   │   └── AgentViewFrameKey.swift      # PreferenceKey for anchor frames
+│   │   ├── TapID.swift                  # .tapID() view modifier
+│   │   ├── TapInspectable.swift         # .tapInspectable() root modifier
+│   │   ├── TapViewStore.swift         # View tree + screenshot dispatch
+│   │   └── TapViewFrameKey.swift      # PreferenceKey for anchor frames
 │   └── SwiftUITapMacros/
 │       ├── SwiftUITapMacro.swift          # ExtensionMacro (SwiftSyntax)
 │       └── Plugin.swift                 # CompilerPlugin entry point

@@ -12,30 +12,30 @@ struct ContentView: View {
             Text("Todos")
                 .font(.largeTitle.bold())
                 .padding()
-                .agentID("title")
+                .tapID("title")
 
             // Input
             HStack {
                 TextField("What needs to be done?", text: $state.newTodoText)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { addTodo() }
-                    .agentID("input")
+                    .tapID("input")
 
                 Button("Add") { addTodo() }
                     .buttonStyle(.borderedProminent)
                     .disabled(appState.newTodoText.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .agentID("addButton")
+                    .tapID("addButton")
             }
             .padding(.horizontal)
             .padding(.bottom)
-            .agentID("inputBar")
+            .tapID("inputBar")
 
             // List
             if appState.todos.isEmpty {
                 Spacer()
                 Text("No todos yet")
                     .foregroundStyle(.secondary)
-                    .agentID("emptyLabel")
+                    .tapID("emptyLabel")
                 Spacer()
             } else {
                 List {
@@ -47,7 +47,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                .agentID("todoList")
+                .tapID("todoList")
             }
 
             // Footer
@@ -60,14 +60,14 @@ struct ContentView: View {
                         appState.clearCompleted()
                     }
                     .buttonStyle(.bordered)
-                    .agentID("clearButton")
+                    .tapID("clearButton")
                 }
                 .padding()
-                .agentID("footer")
+                .tapID("footer")
             }
         }
         .frame(minWidth: 400, minHeight: 500)
-        .agentID("root")
+        .tapID("root")
     }
 
     private func addTodo() {

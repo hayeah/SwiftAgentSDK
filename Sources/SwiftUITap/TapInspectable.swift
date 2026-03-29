@@ -6,20 +6,20 @@ import AppKit
 import UIKit
 #endif
 
-// MARK: - .agentInspectable() root modifier
+// MARK: - .tapInspectable() root modifier
 
-struct AgentInspectableModifier: ViewModifier {
-    let viewStore: AgentViewStore
+struct TapInspectableModifier: ViewModifier {
+    let viewStore: TapViewStore
 
     func body(content: Content) -> some View {
         content
-            .backgroundPreferenceValue(AgentViewFrameKey.self) { anchors in
+            .backgroundPreferenceValue(TapViewFrameKey.self) { anchors in
                 // This closure re-runs whenever any anchor preference changes.
                 FrameResolver(anchors: anchors, viewStore: viewStore)
             }
             .background(PlatformViewBridge(viewStore: viewStore))
             .onAppear {
-                AgentViewStore.active = viewStore
+                TapViewStore.active = viewStore
             }
     }
 }
@@ -28,7 +28,7 @@ struct AgentInspectableModifier: ViewModifier {
 /// Extracted into its own View so SwiftUI re-evaluates on preference changes.
 private struct FrameResolver: View {
     let anchors: [String: Anchor<CGRect>]
-    let viewStore: AgentViewStore
+    let viewStore: TapViewStore
 
     var body: some View {
         GeometryReader { geometry in
@@ -48,7 +48,7 @@ private struct FrameResolver: View {
 
 #if canImport(AppKit)
 struct PlatformViewBridge: NSViewRepresentable {
-    let viewStore: AgentViewStore
+    let viewStore: TapViewStore
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -68,7 +68,7 @@ struct PlatformViewBridge: NSViewRepresentable {
 }
 #elseif canImport(UIKit)
 struct PlatformViewBridge: UIViewRepresentable {
-    let viewStore: AgentViewStore
+    let viewStore: TapViewStore
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
@@ -95,8 +95,8 @@ struct PlatformViewBridge: UIViewRepresentable {
 extension View {
     /// Install view inspection at the root of your view hierarchy.
     /// This enables the POST /view protocol for tree, screenshot, get/set/call.
-    public func agentInspectable() -> some View {
-        let viewStore = AgentViewStore()
-        return modifier(AgentInspectableModifier(viewStore: viewStore))
+    public func tapInspectable() -> some View {
+        let viewStore = TapViewStore()
+        return modifier(TapInspectableModifier(viewStore: viewStore))
     }
 }

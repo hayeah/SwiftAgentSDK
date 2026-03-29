@@ -1,10 +1,10 @@
 import SwiftUI
 
-// MARK: - AgentDebugLayout
+// MARK: - TapDebugLayout
 
 /// Transparent Layout wrapper that records proposed/reported sizes.
 /// Always on — intercepts the real sizeThatFits, no extra layout passes.
-public struct AgentDebugLayout: Layout {
+public struct TapDebugLayout: Layout {
     let id: String
 
     public func sizeThatFits(
@@ -26,7 +26,7 @@ public struct AgentDebugLayout: Layout {
         // Record in placeSubviews — this is the final layout pass, not a probe.
         // placeSubviews runs on the main thread as part of the render pipeline.
         Task { @MainActor in
-            AgentViewStore.active?.layoutInfo[id] = AgentViewStore.LayoutInfo(
+            TapViewStore.active?.layoutInfo[id] = TapViewStore.LayoutInfo(
                 proposedWidth: proposal.width,
                 proposedHeight: proposal.height,
                 reported: reported
@@ -35,16 +35,16 @@ public struct AgentDebugLayout: Layout {
     }
 }
 
-// MARK: - .agentID() modifier
+// MARK: - .tapID() modifier
 
-struct AgentIDModifier: ViewModifier {
+struct TapIDModifier: ViewModifier {
     let qualifiedID: String
 
     func body(content: Content) -> some View {
-        AgentDebugLayout(id: qualifiedID) {
+        TapDebugLayout(id: qualifiedID) {
             content
         }
-        .transformAnchorPreference(key: AgentViewFrameKey.self, value: .bounds) { existing, anchor in
+        .transformAnchorPreference(key: TapViewFrameKey.self, value: .bounds) { existing, anchor in
             existing[qualifiedID] = anchor
         }
         .accessibilityIdentifier(qualifiedID)
@@ -54,12 +54,12 @@ struct AgentIDModifier: ViewModifier {
 extension View {
     /// Tag a view for agent inspection.
     /// The ID is auto-prefixed with the source filename (e.g. "ContentView.greeting").
-    public func agentID(_ id: String, file: String = #fileID) -> some View {
+    public func tapID(_ id: String, file: String = #fileID) -> some View {
         let stem = file
             .split(separator: "/").last
             .flatMap { $0.split(separator: ".").first }
             .map(String.init) ?? ""
         let qualifiedID = stem.isEmpty ? id : "\(stem).\(id)"
-        return modifier(AgentIDModifier(qualifiedID: qualifiedID))
+        return modifier(TapIDModifier(qualifiedID: qualifiedID))
     }
 }

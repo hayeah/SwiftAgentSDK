@@ -14,7 +14,7 @@ struct ContentView: View {
                     TextField("What needs to be done?", text: $state.newTodoText)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { addTodo() }
-                        .agentID("input")
+                        .tapID("input")
 
                     Button {
                         addTodo()
@@ -23,17 +23,17 @@ struct ContentView: View {
                             .font(.title2)
                     }
                     .disabled(appState.newTodoText.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .agentID("addButton")
+                    .tapID("addButton")
                 }
                 .padding()
-                .agentID("inputBar")
+                .tapID("inputBar")
 
                 // List
                 if appState.todos.isEmpty {
                     Spacer()
                     Text("No todos yet")
                         .foregroundStyle(.secondary)
-                        .agentID("emptyLabel")
+                        .tapID("emptyLabel")
                     Spacer()
                 } else {
                     List {
@@ -46,7 +46,7 @@ struct ContentView: View {
                         }
                     }
                     .listStyle(.plain)
-                    .agentID("todoList")
+                    .tapID("todoList")
                 }
 
                 // Footer
@@ -60,15 +60,15 @@ struct ContentView: View {
                             appState.clearCompleted()
                         }
                         .font(.footnote)
-                        .agentID("clearButton")
+                        .tapID("clearButton")
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
-                    .agentID("footer")
+                    .tapID("footer")
                 }
             }
             .navigationTitle("Todos")
-            .agentID("root")
+            .tapID("root")
         }
     }
 

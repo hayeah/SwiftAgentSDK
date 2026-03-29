@@ -425,7 +425,7 @@ final class AppState {  // no NSObject needed
 }
 
 // Macro generates:
-extension AppState: AgentDispatchable {
+extension AppState: TapDispatchable {
     func agentGet(_ path: String) -> Any? {
         switch path {
         case "counter": return counter

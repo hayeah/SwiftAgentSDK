@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// PreferenceKey that collects Anchor<CGRect> values from all .agentID() tagged views.
+/// PreferenceKey that collects Anchor<CGRect> values from all .tapID() tagged views.
 /// Keyed by the qualified ID (e.g. "ContentView.greeting").
-public struct AgentViewFrameKey: PreferenceKey {
+public struct TapViewFrameKey: PreferenceKey {
     public static var defaultValue: [String: Anchor<CGRect>] = [:]
 
     public static func reduce(

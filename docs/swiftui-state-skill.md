@@ -1,15 +1,8 @@
----
-overview: SKILL guide for writing SwiftUI apps with a single global state tree pattern. State classes use NSObject + @objc dynamic so agents can inspect and manipulate state programmatically via string paths (KVC). Covers state tree design, view binding, data modeling, and agent-compatibility conventions.
-tags:
-  - skill
-  - swift
----
-
 # SwiftUI Global State Tree — SKILL Guide
 
 ## Overview
 
-This skill guides you to write SwiftUI apps with a **single global state tree** rooted in one `@Observable` object. All views bind to paths within this tree. State classes inherit from `NSObject` with `@objc dynamic` properties so that agents can read, write, and call methods programmatically via string paths.
+This skill guides you to write SwiftUI apps with a **single global state tree** rooted in one `@Observable` object. All views bind to paths within this tree. State classes use the `@SwiftUITap` macro to generate dispatch code so that agents can read, write, and call methods programmatically via string paths.
 
 ## Why This Pattern
 
@@ -17,6 +10,7 @@ This skill guides you to write SwiftUI apps with a **single global state tree** 
 - **Agent-drivable** — every property is addressable by dot-path string (e.g., `library.searchQuery`), every method callable by name
 - **Easy to stub** — set any state for previews, tests, or screenshots without mocks
 - **Transparent data flow** — each view declares which path in the tree it binds to
+- **Zero runtime cost in production** — wrap `@SwiftUITap` in `#if DEBUG`, release builds are plain `@Observable`
 
 ---
 
@@ -24,12 +18,17 @@ This skill guides you to write SwiftUI apps with a **single global state tree** 
 
 ### Root State
 
-One `@Observable` class inheriting `NSObject`. This is the entire app's state:
+One `@Observable` class. This is the entire app's state:
 
 ```swift
+import SwiftUITap
+
+#if DEBUG
+@SwiftUITap
+#endif
 @Observable
-final class AppState: NSObject {
-    @objc dynamic var __doc__: String {
+final class AppState {
+    var __doc__: String {
         """
         AppState — EPUB Reader state tree.
 
@@ -40,11 +39,10 @@ final class AppState: NSObject {
 
         library (LibraryState) — book library and browsing
           .searchQuery (String)         — set to filter the book list, "" = no filter
-          .books (NSMutableArray)       — all BookEntry objects {id, title, author, filename}
+          .books ([BookEntry])          — all BookEntry objects {id, title, author, filename}
           .activeLibraryID (String?)    — selected library folder, nil = show all
-          .filteredBooks                — computed: books filtered by searchQuery (read-only)
 
-        sessions (NSMutableArray) — open reading sessions, one per book
+        sessions ([ReadingSession]) — open reading sessions, one per book
           sessions.N (ReadingSession):
             .bookID (String)                  — ID of the open book
             .currentChapterIndex (Int)        — zero-based chapter index
@@ -103,58 +101,67 @@ final class AppState: NSObject {
         """
     }
 
-    @objc dynamic var library = LibraryState()
-    @objc dynamic var sessions: NSMutableArray = []  // [ReadingSession]
+    var library: LibraryState = LibraryState()
+    var sessions: [ReadingSession] = []
 
     // Derived — computed, not stored
-    var openBookIDs: Set<String> { Set((sessions as! [ReadingSession]).map { $0.book.id }) }
+    var openBookIDs: Set<String> { Set(sessions.map { $0.bookID }) }
 
     // Actions
-    @objc func openBook(bookID: String, chapter: Int) -> NSDictionary? {
+    func openBook(bookID: String, chapter: Int) -> [String: Any]? {
         let session = ReadingSession(bookID: bookID, chapter: chapter)
-        sessions.add(session)
+        sessions.append(session)
         return ["sessionIndex": sessions.count - 1]
     }
 
-    @objc func closeSession(sessionID: String) {
-        let id = UUID(uuidString: sessionID)!
-        sessions.removeObject(at: (sessions as! [ReadingSession]).firstIndex { $0.id == id }!)
+    func closeSession(sessionID: String) {
+        sessions.removeAll { $0.id.uuidString == sessionID }
     }
 }
 ```
 
 ### Child State Classes
 
-Each logical domain gets its own `@Observable` + `NSObject` class:
+Each logical domain gets its own `@Observable` class with `@SwiftUITap`:
 
 ```swift
+#if DEBUG
+@SwiftUITap
+#endif
 @Observable
-final class LibraryState: NSObject {
-    @objc dynamic var searchQuery: String = ""
-    @objc dynamic var activeLibraryID: String? = nil
-    @objc dynamic var books: NSMutableArray = []  // [BookEntry]
+final class LibraryState {
+    var searchQuery: String = ""
+    var activeLibraryID: String? = nil
+    var books: [BookEntry] = []
 
-    // Derived
+    // Derived — computed, read-only to agents
     var filteredBooks: [BookEntry] {
-        let allBooks = books as! [BookEntry]
-        guard !searchQuery.isEmpty else { return allBooks }
-        return allBooks.filter { $0.matches(searchQuery) }
+        guard !searchQuery.isEmpty else { return books }
+        return books.filter { $0.matches(searchQuery) }
     }
 }
 
+#if DEBUG
+@SwiftUITap
+#endif
 @Observable
-final class ReadingSession: NSObject, Identifiable {
+final class ReadingSession: Identifiable {
     let id = UUID()
 
-    @objc dynamic var bookID: String = ""
-    @objc dynamic var currentChapterIndex: Int = 0
-    @objc dynamic var scrollFraction: Double = 0.0
-    @objc dynamic var isChapterSwitcherVisible = false
-    @objc dynamic var isBottomBarVisible = true
+    var bookID: String = ""
+    var currentChapterIndex: Int = 0
+    var scrollFraction: Double = 0.0
+    var isChapterSwitcherVisible: Bool = false
+    var isBottomBarVisible: Bool = true
+
+    init(bookID: String, chapter: Int) {
+        self.bookID = bookID
+        self.currentChapterIndex = chapter
+    }
 
     // Actions
-    @objc func nextChapter() { currentChapterIndex += 1 }
-    @objc func previousChapter() { currentChapterIndex = max(0, currentChapterIndex - 1) }
+    func nextChapter() { currentChapterIndex += 1 }
+    func previousChapter() { currentChapterIndex = max(0, currentChapterIndex - 1) }
 }
 ```
 
@@ -177,7 +184,7 @@ struct Chapter: Identifiable {
 }
 ```
 
-**Rule of thumb**: if an agent needs to get/set properties on it by path, make it an `NSObject` class. If it's just data passed around, use a struct.
+**Rule of thumb**: if an agent needs to get/set properties on it by path, make it an `@Observable` class with `@SwiftUITap`. If it's just data passed around, use a struct.
 
 ---
 
@@ -185,17 +192,40 @@ struct Chapter: Identifiable {
 
 ### Property Declarations
 
-- All agent-visible properties: `@objc dynamic var`
-- Derived/computed properties: plain `var` (no `@objc dynamic` needed, agents read parent and compute)
-- Constants: `let` (not agent-writable, that's fine)
-- Arrays that agents index into: `NSMutableArray` (KVC requires it for indexed access like `sessions.0.currentChapterIndex`)
-- Arrays that are just data: plain `[SomeStruct]`
+The `@SwiftUITap` macro needs **explicit type annotations** on every property it should expose:
+
+```swift
+// EXPOSED — explicit type annotation
+var counter: Int = 0
+var label: String = "hello"
+var darkMode: Bool = false
+var name: String? = nil
+var todos: [TodoItem] = []
+var settings: SettingsState = SettingsState()
+
+// SKIPPED — no type annotation (invisible to agent)
+var settings = SettingsState()
+var count = 0
+
+// SKIPPED — complex generics
+var lookup: [String: TodoItem] = [:]
+var callback: (() -> Void)? = nil
+```
+
+| Type annotation | Get | Set | Notes |
+|---|---|---|---|
+| `String`, `Int`, `Double`, `Bool` | yes | yes | Direct JSON mapping |
+| `String?`, `Int?`, etc. | yes | yes | nil ↔ JSON null |
+| `[T]` | yes | index traversal | `todos.0.title` |
+| Any other class identifier | yes | delegate to child | Runtime `as? TapDispatchable` check |
+| `let` / computed | yes | no | Read-only |
+| No type annotation | skipped | skipped | Invisible to agent |
 
 ### `__doc__` on the Root State Class
 
 One `__doc__` on `AppState` that covers the **entire** state tree — every property, every method, every child class's fields, with workflows and notes. The agent reads one string and knows how to interact with the whole app.
 
-No per-class `__doc__`. Child state classes don't need their own — the root doc covers them by path. The agent reads one string and knows how to interact with the whole app.
+No per-class `__doc__`. Child state classes don't need their own — the root doc covers them by path.
 
 ### Direct Set vs Action Methods
 
@@ -218,16 +248,14 @@ This covers UI toggles (`isBottomBarVisible`, `isChapterSwitcherVisible`), text 
 **Action method** — when the operation touches multiple properties, has invariants, or produces a result:
 
 ```swift
-// Opening a book creates a session, appends to array, returns index — not a single set
-@objc func openBook(bookID: String, chapter: Int) -> NSDictionary? {
+func openBook(bookID: String, chapter: Int) -> [String: Any]? {
     let session = ReadingSession(bookID: bookID, chapter: chapter)
-    sessions.add(session)
+    sessions.append(session)
     return ["sessionIndex": sessions.count - 1]
 }
 
-// Closing a session needs to find + remove — not just a property write
-@objc func closeSession(sessionID: String) {
-    // cleanup, remove from array, persist...
+func closeSession(sessionID: String) {
+    sessions.removeAll { $0.id.uuidString == sessionID }
 }
 ```
 
@@ -236,15 +264,13 @@ This covers UI toggles (`isBottomBarVisible`, `isChapterSwitcherVisible`), text 
 Both are equally testable — the state tree is a plain object, no mocks needed:
 
 ```swift
-// Testing a direct set
 func testSearchFilters() {
     let state = LibraryState()
-    state.books = NSMutableArray(array: [BookEntry(title: "Alice"), BookEntry(title: "Moby Dick")])
+    state.books = [BookEntry(title: "Alice"), BookEntry(title: "Moby Dick")]
     state.searchQuery = "alice"
     XCTAssertEqual(state.filteredBooks.count, 1)
 }
 
-// Testing an action method
 func testOpenBook() {
     let state = AppState()
     let result = state.openBook(bookID: "abc", chapter: 3)
@@ -255,19 +281,38 @@ func testOpenBook() {
 
 ### Agent-Callable Methods
 
-Methods that agents can call are `@objc func` with ObjC-compatible arg types:
+Methods the macro exposes must have **labeled parameters**:
 
-- Supported: `String`, `Int`, `Double`, `Bool`, `NSDictionary`, `NSArray`
-- Return `NSDictionary?` for results, `nil` (void) for fire-and-forget
-- Internal callers can call these directly — typed args work normally in Swift
-- For complex args, use a single `NSDictionary` param and destructure
+```swift
+// EXPOSED — labeled params, supported types
+func addTodo(title: String) -> [String: Any]? { ... }
+func toggleTodo(index: Int) { ... }
+func reset() { ... }
+
+// EXPOSED — Codable params and returns
+func moveTo(point: Point) -> MoveResult { ... }
+
+// SKIPPED — unlabeled param
+func process(_ items: [TodoItem]) { ... }
+
+// SKIPPED — private
+private func internalHelper() { ... }
+```
+
+**Parameter types:**
+- `String`, `Int`, `Double`, `Bool` → direct JSON cast
+- Any other type → `Decodable` (decoded from JSON)
+
+**Return types:**
+- `Void` → null
+- Primitives, `[String: Any]?` → passed through
+- Any other type → `Encodable` (encoded to JSON)
 
 ### View Binding
 
-Views receive a reference to the state subtree they need. Declare which path each view binds to:
+Views receive a reference to the state subtree they need:
 
 ```swift
-// Binds to a single session
 struct ReadingView: View {
     let session: ReadingSession
 
@@ -276,9 +321,8 @@ struct ReadingView: View {
     }
 }
 
-// Binds to the full app state (needs multiple subtrees)
 struct LibraryView: View {
-    let appState: AppState
+    @Environment(AppState.self) var appState
 
     var body: some View {
         List(appState.library.filteredBooks) { book in
@@ -291,18 +335,46 @@ struct LibraryView: View {
 Pass state via SwiftUI environment from the root:
 
 ```swift
+private let sharedAppState = AppState()
+
 @main
 struct MyApp: App {
-    @State private var appState = AppState()
-
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environment(appState)
+                .environment(sharedAppState)
+                .tapInspectable()
+                .onAppear {
+                    #if DEBUG
+                    SwiftUITap.poll(state: sharedAppState, server: "http://localhost:9876")
+                    #endif
+                }
         }
     }
 }
 ```
+
+### View Tagging
+
+Tag views with `.tapID()` so agents can dump the view tree and take targeted screenshots:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            TextField("Search", text: $state.query)
+                .tapID("searchField")
+            List { ... }
+                .tapID("todoList")
+            Button("Add") { ... }
+                .tapID("addButton")
+        }
+        .tapID("root")
+    }
+}
+```
+
+IDs are auto-prefixed with the source file name: `ContentView.root`, `ContentView.todoList`, etc.
 
 ### State Organization
 
@@ -310,9 +382,9 @@ struct MyApp: App {
 AppState                          ← root, one per app
 ├── library: LibraryState         ← domain subtree
 │   ├── searchQuery: String
-│   ├── books: NSMutableArray
+│   ├── books: [BookEntry]
 │   └── activeLibraryID: String?
-├── sessions: NSMutableArray      ← array of domain objects
+├── sessions: [ReadingSession]    ← array of domain objects
 │   ├── [0]: ReadingSession
 │   │   ├── currentChapterIndex: Int
 │   │   ├── scrollFraction: Double
@@ -330,48 +402,13 @@ Every node in this tree is addressable by dot-path:
 
 ---
 
-## ObjC Type Bridging
-
-Not everything fits `@objc dynamic`. Bridging strategies:
-
-### Enums → raw value wrapper
-
-```swift
-enum ViewMode: String { case list, grid, detail }
-
-var viewMode: ViewMode = .list
-
-@objc dynamic var viewModeRaw: String {
-    get { viewMode.rawValue }
-    set { viewMode = ViewMode(rawValue: newValue) ?? .list }
-}
-```
-
-### Typed arrays → NSMutableArray
-
-For arrays that agents need to index into:
-
-```swift
-// Agent can do: sessions.0.currentChapterIndex
-@objc dynamic var sessions: NSMutableArray = []
-
-// Internal convenience
-var typedSessions: [ReadingSession] {
-    sessions as! [ReadingSession]
-}
-```
-
-For arrays that are just data (no agent indexing), use plain `[SomeStruct]`.
-
----
-
 ## Anti-Patterns
 
 - **Scattered ObservableObjects** — don't use multiple `@StateObject` / `@EnvironmentObject` scattered across views. One tree.
 - **ViewModels per screen** — no `LibraryViewModel`, `ReaderViewModel`. The state tree IS the view model.
 - **State in views** — `@State` is fine for ephemeral view-local state (animation, sheet presentation). Anything an agent might care about goes in the tree.
-- **Protocols on state classes** — no `AgentExposable` or similar. Just `NSObject` + `@objc dynamic` by convention.
-- **Registries for methods** — no method registry. Just `@objc func`.
+- **Protocols on state classes** — no `TapExposable` or similar. Just `@SwiftUITap` macro on `@Observable` classes.
+- **Registries for methods** — no method registry. The macro generates dispatch from your class declaration.
 - **Private state** — don't hide state behind private access. The tree should be fully inspectable. If a property exists, it's readable.
 
 ---

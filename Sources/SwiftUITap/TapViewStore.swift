@@ -10,11 +10,11 @@ import UIKit
 /// Stores view inspection data: frames, layout info, and root platform view reference.
 /// Used by the view inspection protocol (POST /view).
 @MainActor
-public final class AgentViewStore {
-    /// Shared instance — set by .agentInspectable(), read by DebugLayout and Poller.
-    public static var active: AgentViewStore?
+public final class TapViewStore {
+    /// Shared instance — set by .tapInspectable(), read by DebugLayout and Poller.
+    public static var active: TapViewStore?
 
-    /// Resolved anchor frames, keyed by qualified agentID.
+    /// Resolved anchor frames, keyed by qualified tapID.
     public var frames: [String: CGRect] = [:]
 
     /// Layout negotiation info from DebugLayout passthrough.
@@ -48,7 +48,7 @@ public final class AgentViewStore {
 
     // MARK: - Dispatch
 
-    public func dispatch(_ request: [String: Any]) -> AgentResult {
+    public func dispatch(_ request: [String: Any]) -> TapResult {
         guard let type = request["type"] as? String else {
             return .error("missing 'type' field")
         }
@@ -72,7 +72,7 @@ public final class AgentViewStore {
 
     // MARK: - Tree
 
-    func tree(id: String?) -> AgentResult {
+    func tree(id: String?) -> TapResult {
         // Build flat list of nodes with absolute frames (offset to match screenshot coordinates)
         let offset = contentOffset
         var absFrames: [String: CGRect] = [:]
@@ -172,7 +172,7 @@ public final class AgentViewStore {
 
     // MARK: - Screenshot
 
-    func screenshot(_ request: [String: Any]) -> AgentResult {
+    func screenshot(_ request: [String: Any]) -> TapResult {
         #if canImport(AppKit)
         guard let view = rootView, let window = view.window else {
             return .error("no root view available for screenshot")
@@ -251,11 +251,11 @@ public final class AgentViewStore {
 
     // MARK: - KVC Get/Set/Call on backing platform view
 
-    func platformGet(_ request: [String: Any]) -> AgentResult {
+    func platformGet(_ request: [String: Any]) -> TapResult {
         guard let id = request["id"] as? String else {
             return .error("get requires 'id'")
         }
-        guard let view = findPlatformView(forAgentID: id) else {
+        guard let view = findPlatformView(forTapID: id) else {
             return .error("no backing view for id: \(id)")
         }
         let viewClass = String(describing: type(of: view))
@@ -277,11 +277,11 @@ public final class AgentViewStore {
         return .value(["data": serializeValue(val), "viewClass": viewClass])
     }
 
-    func platformSet(_ request: [String: Any]) -> AgentResult {
+    func platformSet(_ request: [String: Any]) -> TapResult {
         guard let id = request["id"] as? String else {
             return .error("set requires 'id'")
         }
-        guard let view = findPlatformView(forAgentID: id) else {
+        guard let view = findPlatformView(forTapID: id) else {
             return .error("no backing view for id: \(id)")
         }
         guard let path = request["path"] as? String else {
@@ -292,11 +292,11 @@ public final class AgentViewStore {
         return .value(["viewClass": viewClass])
     }
 
-    func platformCall(_ request: [String: Any]) -> AgentResult {
+    func platformCall(_ request: [String: Any]) -> TapResult {
         guard let id = request["id"] as? String else {
             return .error("call requires 'id'")
         }
-        guard let view = findPlatformView(forAgentID: id) else {
+        guard let view = findPlatformView(forTapID: id) else {
             return .error("no backing view for id: \(id)")
         }
         guard let method = request["method"] as? String else {
@@ -314,7 +314,7 @@ public final class AgentViewStore {
 
     // MARK: - Debug
 
-    func debugViewHierarchy() -> AgentResult {
+    func debugViewHierarchy() -> TapResult {
         guard let root = rootView else {
             return .error("no root view — rootView is nil")
         }
@@ -362,16 +362,16 @@ public final class AgentViewStore {
 
     // MARK: - Helpers
 
-    /// Find the backing platform view for a tagged agentID.
-    /// Strategy: match the agentID's resolved frame against UIView/NSView frames.
-    /// The closest-sized view whose frame overlaps the agentID frame is returned.
+    /// Find the backing platform view for a tagged tapID.
+    /// Strategy: match the tapID's resolved frame against UIView/NSView frames.
+    /// The closest-sized view whose frame overlaps the tapID frame is returned.
     private func findViewClass(for id: String) -> String? {
-        guard let view = findPlatformView(forAgentID: id) else { return nil }
+        guard let view = findPlatformView(forTapID: id) else { return nil }
         return String(describing: type(of: view))
     }
 
     #if canImport(AppKit)
-    private func findPlatformView(forAgentID id: String) -> NSView? {
+    private func findPlatformView(forTapID id: String) -> NSView? {
         guard let root = rootView, let swiftuiFrame = frames[id] else { return nil }
         // Offset SwiftUI frame to rootView coordinates
         let targetFrame = swiftuiFrame.offsetBy(dx: contentOffset.x, dy: contentOffset.y)
@@ -401,7 +401,7 @@ public final class AgentViewStore {
         }
     }
     #elseif canImport(UIKit)
-    private func findPlatformView(forAgentID id: String) -> UIView? {
+    private func findPlatformView(forTapID id: String) -> UIView? {
         guard let root = rootView, let swiftuiFrame = frames[id] else { return nil }
         let targetFrame = swiftuiFrame.offsetBy(dx: contentOffset.x, dy: contentOffset.y)
         return findBestMatch(in: root, targetFrame: targetFrame)

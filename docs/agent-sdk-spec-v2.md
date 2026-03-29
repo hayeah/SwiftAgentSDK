@@ -1,5 +1,5 @@
 ---
-overview: "Design spec for SwiftUITap v2: uses an @SwiftUITap Swift macro instead of @objc dynamic + KVC. Generates AgentDispatchable conformance at compile time. Pure Swift — no NSObject, no KVC, no NSInvocation. Works cleanly with @Observable and SwiftUI."
+overview: "Design spec for SwiftUITap v2: uses an @SwiftUITap Swift macro instead of @objc dynamic + KVC. Generates TapDispatchable conformance at compile time. Pure Swift — no NSObject, no KVC, no NSInvocation. Works cleanly with @Observable and SwiftUI."
 tags:
   - spec
 ---
@@ -69,7 +69,7 @@ final class AppState {
 | `String`, `Int`, `Double`, `Bool` | Primitive | yes | yes | Direct JSON mapping |
 | `String?`, `Int?`, etc. | Optional primitive | yes | yes | nil ↔ JSON null |
 | `[T]` | Array | yes | no (use methods) | `T` can be primitive or class |
-| Any other single identifier (e.g. `SettingsState`) | Child state | yes | delegate | Runtime `as? AgentDispatchable` |
+| Any other single identifier (e.g. `SettingsState`) | Child state | yes | delegate | Runtime `as? TapDispatchable` |
 | `let` properties | Constant | yes | no | Read-only |
 | Computed properties (no `=`) | Computed | yes | no | Read-only |
 | Everything else | — | skipped | skipped | No error, just invisible |
@@ -103,13 +103,13 @@ final class AppState {
 
 **Parameter types:**
 - Primitives (`String`, `Int`, `Double`, `Bool`) → direct cast from JSON
-- Any other type with a label and type annotation → `__agentDecode<T>()` — must conform to `Decodable` or you get a compile error
+- Any other type with a label and type annotation → `__tapDecode<T>()` — must conform to `Decodable` or you get a compile error
 
 **Return types:**
 - `Void` / omitted → `.value(nil)`
 - Primitives → `.value(result)` (already JSON-compatible)
 - `[String: Any]?` → `.value(result)` (already JSON)
-- Any other type → `.value(__agentEncode(result))` — must conform to `Encodable` or compile error
+- Any other type → `.value(__tapEncode(result))` — must conform to `Encodable` or compile error
 
 **Skipped methods:**
 - `private` or `fileprivate`
@@ -129,21 +129,21 @@ The macro matches type annotation tokens as literal strings:
 Property type annotations:
   "String", "Int", "Double", "Bool"  → primitive (direct cast)
   "String?", "Int?", etc.            → optional primitive
-  "[Foo]"                            → array (index traversal, AgentDispatchable elements)
+  "[Foo]"                            → array (index traversal, TapDispatchable elements)
   "[String]", "[Int]", etc.          → array of primitives
-  any other single identifier        → child state (as? AgentDispatchable at runtime)
+  any other single identifier        → child state (as? TapDispatchable at runtime)
   missing annotation                 → skip
 
 Method param types:
   "String", "Int", "Double", "Bool"  → direct cast
-  any other type with label          → __agentDecode<T>() (must be Decodable — compiler enforces)
+  any other type with label          → __tapDecode<T>() (must be Decodable — compiler enforces)
   unlabeled ("_")                    → skip entire method
 
 Method return types:
   Void / omitted                     → .value(nil)
   "String", "Int", "Double", "Bool"  → .value(result)
   "[String: Any]?"                   → .value(result)
-  any other type                     → .value(__agentEncode(result)) (must be Encodable — compiler enforces)
+  any other type                     → .value(__tapEncode(result)) (must be Encodable — compiler enforces)
 ```
 
 No type inference. No type alias resolution. No cross-file lookups. Just string matching on the annotation token. Codable conformance is enforced by the compiler, not the macro.
@@ -154,7 +154,7 @@ No type inference. No type alias resolution. No cross-file lookups. Just string 
 
 ### `@SwiftUITap` Macro
 
-An attached macro that generates `AgentDispatchable` conformance. The app author writes normal `@Observable` classes — no NSObject, no `@objc`, no special types. All properties must have explicit type annotations:
+An attached macro that generates `TapDispatchable` conformance. The app author writes normal `@Observable` classes — no NSObject, no `@objc`, no special types. All properties must have explicit type annotations:
 
 ```swift
 import SwiftUITap
@@ -205,36 +205,36 @@ final class TodoItem {
 }
 ```
 
-The macro generates an extension with three methods: `__agentGet`, `__agentSet`, `__agentCall`. The `__` prefix avoids collisions with app methods. No runtime reflection — all dispatch is compiled switch tables.
+The macro generates an extension with three methods: `__tapGet`, `__tapSet`, `__tapCall`. The `__` prefix avoids collisions with app methods. No runtime reflection — all dispatch is compiled switch tables.
 
 ### What the Macro Generates
 
 ```swift
 // Generated for AppState:
-extension AppState: AgentDispatchable {
-    func __agentGet(_ path: String) -> AgentResult {
-        let (head, tail) = AgentPath.split(path)
+extension AppState: TapDispatchable {
+    func __tapGet(_ path: String) -> TapResult {
+        let (head, tail) = TapPath.split(path)
         switch head {
         case "__doc__": return .value(__doc__)
         case "counter": return .value(counter)
         case "label": return .value(label)
         case "settings":
             guard let tail else { return .error("settings requires a sub-path") }
-            return (settings as? AgentDispatchable)?.__agentGet(tail) ?? .error("not dispatchable: settings")
+            return (settings as? TapDispatchable)?.__tapGet(tail) ?? .error("not dispatchable: settings")
         case "todos":
             guard let tail else { return .error("todos requires an index path") }
-            let (indexStr, rest) = AgentPath.split(tail)
+            let (indexStr, rest) = TapPath.split(tail)
             guard let index = Int(indexStr), index >= 0, index < todos.count else {
                 return .error("index out of bounds: \(indexStr)")
             }
             guard let rest else { return .error("todos.\(index) requires a sub-path") }
-            return (todos[index] as? AgentDispatchable)?.__agentGet(rest) ?? .error("not dispatchable: todos[]")
+            return (todos[index] as? TapDispatchable)?.__tapGet(rest) ?? .error("not dispatchable: todos[]")
         default: return .error("unknown property: \(head)")
         }
     }
 
-    func __agentSet(_ path: String, value: Any?) -> AgentResult {
-        let (head, tail) = AgentPath.split(path)
+    func __tapSet(_ path: String, value: Any?) -> TapResult {
+        let (head, tail) = TapPath.split(path)
         switch head {
         case "counter":
             guard let v = value as? Int else { return .error("type mismatch: counter expects Int") }
@@ -246,20 +246,20 @@ extension AppState: AgentDispatchable {
             return .value(nil)
         case "settings":
             guard let tail else { return .error("cannot replace settings object") }
-            return (settings as? AgentDispatchable)?.__agentSet(tail, value: value) ?? .error("not dispatchable")
+            return (settings as? TapDispatchable)?.__tapSet(tail, value: value) ?? .error("not dispatchable")
         case "todos":
             guard let tail else { return .error("cannot replace todos array") }
-            let (indexStr, rest) = AgentPath.split(tail)
+            let (indexStr, rest) = TapPath.split(tail)
             guard let index = Int(indexStr), index >= 0, index < todos.count else {
                 return .error("index out of bounds")
             }
             guard let rest else { return .error("cannot replace array element") }
-            return (todos[index] as? AgentDispatchable)?.__agentSet(rest, value: value) ?? .error("not dispatchable")
+            return (todos[index] as? TapDispatchable)?.__tapSet(rest, value: value) ?? .error("not dispatchable")
         default: return .error("unknown property: \(head)")
         }
     }
 
-    func __agentCall(_ method: String, params: [String: Any]) -> AgentResult {
+    func __tapCall(_ method: String, params: [String: Any]) -> TapResult {
         switch method {
         case "addTodo":
             guard let title = params["title"] as? String else {
@@ -279,24 +279,24 @@ extension AppState: AgentDispatchable {
 }
 ```
 
-### `AgentDispatchable` Protocol
+### `TapDispatchable` Protocol
 
 ```swift
-public protocol AgentDispatchable: AnyObject {
-    func __agentGet(_ path: String) -> AgentResult
-    func __agentSet(_ path: String, value: Any?) -> AgentResult
-    func __agentCall(_ method: String, params: [String: Any]) -> AgentResult
+public protocol TapDispatchable: AnyObject {
+    func __tapGet(_ path: String) -> TapResult
+    func __tapSet(_ path: String, value: Any?) -> TapResult
+    func __tapCall(_ method: String, params: [String: Any]) -> TapResult
     /// Return all properties as a JSON-serializable dictionary.
-    func __agentSnapshot() -> [String: Any]
+    func __tapSnapshot() -> [String: Any]
 }
 
-public enum AgentResult {
+public enum TapResult {
     case value(Any?)  // success — nil means void/no data
     case error(String)
 }
 ```
 
-The Dispatcher supports `get "."` to snapshot the root state object via `__agentSnapshot()`.
+The Dispatcher supports `get "."` to snapshot the root state object via `__tapSnapshot()`.
 
 ---
 
@@ -304,22 +304,22 @@ The Dispatcher supports `get "."` to snapshot the root state object via `__agent
 
 The key insight: the macro doesn't need cross-file type information. It uses a **runtime protocol check** to delegate traversal.
 
-When the macro sees `var settings: SettingsState`, it generates code that checks at runtime whether the value conforms to `AgentDispatchable`:
+When the macro sees `var settings: SettingsState`, it generates code that checks at runtime whether the value conforms to `TapDispatchable`:
 
 ```swift
 case "settings":
     guard let tail else {
-        return .value((settings as? AgentDispatchable)?.__agentSnapshot())
+        return .value((settings as? TapDispatchable)?.__tapSnapshot())
     }
-    return (settings as? AgentDispatchable)?.__agentGet(tail) ?? .error("not dispatchable: settings")
+    return (settings as? TapDispatchable)?.__tapGet(tail) ?? .error("not dispatchable: settings")
 ```
 
 If `SettingsState` has `@SwiftUITap`, it conforms and traversal works. If it doesn't, the snapshot/traversal returns nil.
 
 This means:
-- `get "settings.darkMode"` → splits to `("settings", "darkMode")`, delegates to `SettingsState.__agentGet("darkMode")`
-- `set "settings.fontSize" 18` → delegates to `SettingsState.__agentSet("fontSize", value: 18)`
-- `get "settings"` → returns full snapshot via `__agentSnapshot()` (all properties as a dict)
+- `get "settings.darkMode"` → splits to `("settings", "darkMode")`, delegates to `SettingsState.__tapGet("darkMode")`
+- `set "settings.fontSize" 18` → delegates to `SettingsState.__tapSet("fontSize", value: 18)`
+- `get "settings"` → returns full snapshot via `__tapSnapshot()` (all properties as a dict)
 - `get "."` → returns root snapshot (handled by Dispatcher)
 
 ---
@@ -332,18 +332,18 @@ Arrays of `@SwiftUITap` classes support indexed traversal and whole-object reads
 case "todos":
     guard let tail else {
         // get "todos" → snapshot entire array
-        return .value(todos.compactMap { ($0 as? AgentDispatchable)?.__agentSnapshot() })
+        return .value(todos.compactMap { ($0 as? TapDispatchable)?.__tapSnapshot() })
     }
-    let (indexStr, rest) = AgentPath.split(tail)
+    let (indexStr, rest) = TapPath.split(tail)
     guard let index = Int(indexStr), index >= 0, index < todos.count else {
         return .error("index out of bounds: \(indexStr)")
     }
     guard let rest else {
         // get "todos.0" → snapshot single item
-        return .value((todos[index] as? AgentDispatchable)?.__agentSnapshot())
+        return .value((todos[index] as? TapDispatchable)?.__tapSnapshot())
     }
     // get "todos.0.title" → delegate to element
-    return (todos[index] as? AgentDispatchable)?.__agentGet(rest)
+    return (todos[index] as? TapDispatchable)?.__tapGet(rest)
         ?? .error("not dispatchable: todos[]")
 ```
 
@@ -383,7 +383,7 @@ The macro generates type-appropriate casting from JSON:
 | `Int` | `(params["x"] as? NSNumber)?.intValue` |
 | `Double` | `(params["x"] as? NSNumber)?.doubleValue` |
 | `Bool` | `(params["x"] as? NSNumber)?.boolValue` |
-| Any other type | `__agentDecode<T>(params["x"])` — T must be `Decodable` |
+| Any other type | `__tapDecode<T>(params["x"])` — T must be `Decodable` |
 
 ### Return Type Handling
 
@@ -392,7 +392,7 @@ The macro generates type-appropriate casting from JSON:
 | `Void` / omitted | `.value(nil)` |
 | `String`, `Int`, `Double`, `Bool` | `.value(result)` |
 | `[String: Any]?` | `.value(result)` |
-| Any other type | `.value(__agentEncode(result))` — must be `Encodable` |
+| Any other type | `.value(__tapEncode(result))` — must be `Encodable` |
 
 The compiler enforces Codable conformance — no runtime check needed. If a type isn't Codable, you get a compile error in the generated extension, which tells you exactly what to fix.
 
@@ -410,11 +410,11 @@ func moveTo(point: Point) -> Point { ... }
 // Generated:
 case "moveTo":
     guard let pointRaw = params["point"],
-          let point: Point = __agentDecode(pointRaw) else {
+          let point: Point = __tapDecode(pointRaw) else {
         return .error("cannot decode param: point (Point)")
     }
     let result = moveTo(point: point)
-    return .value(__agentEncode(result))
+    return .value(__tapEncode(result))
 ```
 
 Agent sends:
@@ -450,13 +450,13 @@ It **cannot** see:
 - Whether a type conforms to a protocol
 - Resolved types of type aliases
 
-This is why nested traversal uses runtime `as? AgentDispatchable` checks, and why explicit type annotations are required (see Coding Convention).
+This is why nested traversal uses runtime `as? TapDispatchable` checks, and why explicit type annotations are required (see Coding Convention).
 
 ### Macro Type
 
 `@SwiftUITap` is an **extension macro**:
-- Adds `AgentDispatchable` conformance via extension
-- Generates `__agentGet`, `__agentSet`, `__agentCall`, `__agentSnapshot` in the extension
+- Adds `TapDispatchable` conformance via extension
+- Generates `__tapGet`, `__tapSet`, `__tapCall`, `__tapSnapshot` in the extension
 - No member injection needed — everything lives in the extension
 
 ### What Gets Skipped
@@ -478,26 +478,26 @@ Unchanged from v1. See the v1 spec for details.
 - `POST /request` — agent sends `get`/`set`/`call`, blocks until response
 - `GET /health` — server status
 
-The only change: the Dispatcher uses `AgentDispatchable` protocol methods instead of KVC + NSInvocation.
+The only change: the Dispatcher uses `TapDispatchable` protocol methods instead of KVC + NSInvocation.
 
 ```swift
 // Dispatcher.swift (v2)
 @MainActor
-func dispatch(_ request: [String: Any]) -> AgentResult {
+func dispatch(_ request: [String: Any]) -> TapResult {
     guard let type = request["type"] as? String else {
         return .error("missing type")
     }
     switch type {
     case "get":
         let path = request["path"] as! String
-        return state.__agentGet(path)
+        return state.__tapGet(path)
     case "set":
         let path = request["path"] as! String
-        return state.__agentSet(path, value: request["value"])
+        return state.__tapSet(path, value: request["value"])
     case "call":
         let method = request["method"] as! String
         let params = request["params"] as? [String: Any] ?? [:]
-        return state.__agentCall(method, params: params)
+        return state.__tapCall(method, params: params)
     default:
         return .error("unknown type: \(type)")
     }
@@ -511,11 +511,11 @@ func dispatch(_ request: [String: Any]) -> AgentResult {
 
 ## `__doc__` Convention
 
-Unchanged. The root state class has a computed `var __doc__: String` covering the entire state tree. The macro includes it in `__agentGet` like any other computed property.
+Unchanged. The root state class has a computed `var __doc__: String` covering the entire state tree. The macro includes it in `__tapGet` like any other computed property.
 
 ## Special Paths
 
-- `get "."` — returns `__agentSnapshot()` of the root state (full dump of all properties)
+- `get "."` — returns `__tapSnapshot()` of the root state (full dump of all properties)
 - `get "todos"` — returns array of snapshots
 - `get "todos.0"` — returns snapshot of single element
 - `get "settings"` — returns snapshot of child state object
@@ -532,10 +532,10 @@ SwiftUITap/
 ├── Sources/
 │   ├── SwiftUITap/
 │   │   ├── SwiftUITap.swift       # Public API: SwiftUITap.poll(state:server:)
-│   │   ├── AgentDispatchable.swift    # Protocol + AgentResult + @SwiftUITap macro declaration
-│   │   ├── AgentPath.swift            # Path splitting utility
+│   │   ├── TapDispatchable.swift    # Protocol + TapResult + @SwiftUITap macro declaration
+│   │   ├── TapPath.swift            # Path splitting utility
 │   │   ├── Poller.swift               # URLSession long-poll loop
-│   │   └── Dispatcher.swift           # Routes get/set/call via AgentDispatchable
+│   │   └── Dispatcher.swift           # Routes get/set/call via TapDispatchable
 │   └── SwiftUITapMacros/
 │       ├── SwiftUITapMacro.swift        # ExtensionMacro implementation (SwiftSyntax)
 │       └── Plugin.swift               # CompilerPlugin entry point

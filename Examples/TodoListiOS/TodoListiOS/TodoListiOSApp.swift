@@ -9,7 +9,7 @@ struct TodoListiOSApp: App {
         WindowGroup {
             ContentView()
                 .environment(sharedAppState)
-                .agentInspectable()
+                .tapInspectable()
                 .onAppear {
                     #if DEBUG
                     let serverURL = ProcessInfo.processInfo.environment["AGENTSDK_URL"]

@@ -8,7 +8,7 @@ final class Poller {
     private let session: URLSession
     private var isRunning = false
 
-    init(state: any AgentDispatchable, serverURL: URL) {
+    init(state: any TapDispatchable, serverURL: URL) {
         self.dispatcher = Dispatcher(state: state)
         self.serverURL = serverURL
         let config = URLSessionConfiguration.default
@@ -61,9 +61,9 @@ final class Poller {
     }
 
     private func processAndRespond(_ request: [String: Any]) async {
-        let result: AgentResult
+        let result: TapResult
         let path = request["_path"] as? String ?? "/request"
-        if path == "/view", let viewStore = AgentViewStore.active {
+        if path == "/view", let viewStore = TapViewStore.active {
             result = viewStore.dispatch(request)
         } else {
             result = dispatcher.dispatch(request)
