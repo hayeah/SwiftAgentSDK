@@ -7,7 +7,7 @@ import XCTest
 
 final class MethodParsingTests: XCTestCase {
 
-    // MARK: - Helper
+    // MARK: - Helpers
 
     private func parseMethods(_ source: String) -> [MethodInfo] {
         let sourceFile = Parser.parse(source: source)
@@ -21,6 +21,12 @@ final class MethodParsingTests: XCTestCase {
     private func generateCall(_ source: String) -> String {
         let methods = parseMethods(source)
         return generateAgentCall(methods: methods)
+    }
+
+    private func expect(_ build: (CodeBuilder) -> Void) -> String {
+        let b = CodeBuilder()
+        build(b)
+        return b.build()
     }
 
     // MARK: - extractMethods: param parsing
@@ -123,7 +129,6 @@ final class MethodParsingTests: XCTestCase {
     // MARK: - extractMethods: skipping
 
     func testSkipsUnlabeledParam() {
-        // Methods with _ params are skipped (agent can't construct complex types)
         let methods = parseMethods("""
         final class S {
             func remove(_ index: Int) {}
@@ -162,55 +167,140 @@ final class MethodParsingTests: XCTestCase {
     // MARK: - generateAgentCall: code generation
 
     func testCallGenSimpleLabel() {
-        let code = generateCall("""
+        let actual = generateCall("""
         final class S {
             func addTodo(title: String) {}
         }
         """)
 
-        XCTAssert(code.contains(#"case "addTodo":"#))
-        XCTAssert(code.contains(#"params["title"] as? String"#))
-        XCTAssert(code.contains("addTodo(title: title)"))
+        let expected = expect { b in
+            b.line(#"case "addTodo":"#)
+            b.indented {
+                b.line(#"guard let title = params["title"] as? String else { return .error("missing param: title (String)") }"#)
+                b.line("addTodo(title: title)")
+                b.line("return .value(nil)")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
     }
 
     func testCallGenKeywordLabel() {
-        let code = generateCall("""
+        let actual = generateCall("""
         final class S {
             func book(for bookID: String) -> [String: Any]? { nil }
         }
         """)
 
-        XCTAssert(code.contains(#"case "book":"#))
-        // JSON key is the argument label "for"
-        XCTAssert(code.contains(#"params["for"]"#), "Should use argument label as JSON key")
-        // Local variable is the internal name "bookID" (not "for" which would be a syntax error)
-        XCTAssert(code.contains("guard let bookID"), "Should use internal name as variable")
-        // Call site uses label: internalName
-        XCTAssert(code.contains("book(for: bookID)"), "Should use label: internalName at call site")
+        let expected = expect { b in
+            b.line(#"case "book":"#)
+            b.indented {
+                b.line(#"guard let bookID = params["for"] as? String else { return .error("missing param: for (String)") }"#)
+                b.line("let result = book(for: bookID)")
+                b.line("return .value(result)")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
     }
 
     func testCallGenMixedLabels() {
-        let code = generateCall("""
+        let actual = generateCall("""
         final class S {
             func move(from source: Int, to destination: Int) {}
         }
         """)
 
-        XCTAssert(code.contains(#"params["from"]"#))
-        XCTAssert(code.contains("guard let source"))
-        XCTAssert(code.contains(#"params["to"]"#))
-        XCTAssert(code.contains("guard let destination"))
-        XCTAssert(code.contains("move(from: source, to: destination)"))
+        let expected = expect { b in
+            b.line(#"case "move":"#)
+            b.indented {
+                b.line(#"guard let source = (params["from"] as? NSNumber)?.intValue else { return .error("missing param: from (Int)") }"#)
+                b.line(#"guard let destination = (params["to"] as? NSNumber)?.intValue else { return .error("missing param: to (Int)") }"#)
+                b.line("move(from: source, to: destination)")
+                b.line("return .value(nil)")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
     }
 
     func testCallGenNoParams() {
-        let code = generateCall("""
+        let actual = generateCall("""
         final class S {
             func reset() {}
         }
         """)
 
-        XCTAssert(code.contains("reset()"))
-        XCTAssert(code.contains("return .value(nil)"))
+        let expected = expect { b in
+            b.line(#"case "reset":"#)
+            b.indented {
+                b.line("reset()")
+                b.line("return .value(nil)")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
+    }
+
+    func testCallGenCodableReturn() {
+        let actual = generateCall("""
+        final class S {
+            func getStats() -> Stats { Stats() }
+        }
+        """)
+
+        let expected = expect { b in
+            b.line(#"case "getStats":"#)
+            b.indented {
+                b.line("let result = getStats()")
+                b.line("return .value(__tapEncode(result))")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
+    }
+
+    func testCallGenCodableParam() {
+        let actual = generateCall("""
+        final class S {
+            func moveTo(point: Point) {}
+        }
+        """)
+
+        let expected = expect { b in
+            b.line(#"case "moveTo":"#)
+            b.indented {
+                b.line(#"guard let pointRaw = params["point"], let point: Point = __tapDecode(pointRaw) else { return .error("cannot decode param: point (Point)") }"#)
+                b.line("moveTo(point: point)")
+                b.line("return .value(nil)")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
+    }
+
+    func testCallGenMultipleMethods() {
+        let actual = generateCall("""
+        final class S {
+            func reset() {}
+            func setName(name: String) {}
+        }
+        """)
+
+        let expected = expect { b in
+            b.line(#"case "reset":"#)
+            b.indented {
+                b.line("reset()")
+                b.line("return .value(nil)")
+            }
+            b.line(#"case "setName":"#)
+            b.indented {
+                b.line(#"guard let name = params["name"] as? String else { return .error("missing param: name (String)") }"#)
+                b.line("setName(name: name)")
+                b.line("return .value(nil)")
+            }
+        }
+
+        XCTAssertEqual(actual, expected)
     }
 }
