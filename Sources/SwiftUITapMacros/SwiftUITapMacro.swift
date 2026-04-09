@@ -11,6 +11,10 @@ public struct SwiftUITapMacro: ExtensionMacro {
     ) throws -> [ExtensionDeclSyntax] {
         let className = type.trimmedDescription
 
+        // Propagate access level from the annotated declaration
+        let isPublic = declaration.modifiers.contains { $0.name.text == "public" }
+        let access = isPublic ? "public " : ""
+
         // Extract properties and methods from the class declaration
         let properties = extractProperties(from: declaration)
         let methods = extractMethods(from: declaration)
@@ -22,7 +26,7 @@ public struct SwiftUITapMacro: ExtensionMacro {
 
         let extensionDecl: DeclSyntax = """
         extension \(raw: className): TapDispatchable {
-            func __tapGet(_ path: String) -> TapResult {
+            \(raw: access)func __tapGet(_ path: String) -> TapResult {
                 let (head, tail) = TapPath.split(path)
                 switch head {
         \(raw: getBody)
@@ -30,7 +34,7 @@ public struct SwiftUITapMacro: ExtensionMacro {
                 }
             }
 
-            func __tapSet(_ path: String, value: Any?) -> TapResult {
+            \(raw: access)func __tapSet(_ path: String, value: Any?) -> TapResult {
                 let (head, tail) = TapPath.split(path)
                 switch head {
         \(raw: setBody)
@@ -38,14 +42,14 @@ public struct SwiftUITapMacro: ExtensionMacro {
                 }
             }
 
-            func __tapCall(_ method: String, params: [String: Any]) -> TapResult {
+            \(raw: access)func __tapCall(_ method: String, params: [String: Any]) -> TapResult {
                 switch method {
         \(raw: callBody)
                 default: return .error("unknown method: \\(method)")
                 }
             }
 
-            func __tapSnapshot() -> [String: Any] {
+            \(raw: access)func __tapSnapshot() -> [String: Any] {
                 return [
         \(raw: snapshotBody)
                 ]
