@@ -4,7 +4,7 @@ import Foundation
 @MainActor
 final class Poller {
     private let dispatcher: Dispatcher
-    private let serverURL: URL
+    let serverURL: URL
     private let session: URLSession
     private var isRunning = false
 

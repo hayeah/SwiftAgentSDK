@@ -22,6 +22,14 @@ public enum SwiftUITap {
         poller.start()
         print("[SwiftUITap] Polling \(server)")
     }
+
+    /// URLs of all currently-running pollers. Useful for surfacing in a
+    /// debug view.
+    @MainActor
+    public static var activeServerURLs: [String] {
+        _activePollers.map { $0.serverURL.absoluteString }
+    }
 }
 
-private var _activePollers: [Poller] = []
+@MainActor
+var _activePollers: [Poller] = []

@@ -25,7 +25,12 @@ final class AppState {
         toggleTodo(index: Int)
         removeTodo(index: Int)
         clearCompleted()
+        showDebug() — present the SwiftUITap debug sheet (for tests)
         """
+    }
+
+    func showDebug() {
+        SwiftUITap.debug.present()
     }
 
     var todos: [TodoItem] = []
