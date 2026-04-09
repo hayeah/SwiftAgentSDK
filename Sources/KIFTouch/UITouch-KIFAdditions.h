@@ -5,6 +5,7 @@
 
 - (id)initInView:(UIView *)view;
 - (id)initAtPoint:(CGPoint)point inView:(UIView *)view;
+- (id)initAtPoint:(CGPoint)point inWindow:(UIWindow *)window;
 
 - (void)setLocationInWindow:(CGPoint)location;
 - (void)setPhaseAndUpdateTimestamp:(UITouchPhase)phase;
