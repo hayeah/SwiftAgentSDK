@@ -228,6 +228,55 @@ Use `view tree` to find coordinates — the frame values in tree output are scre
 
 **Known limitation:** taps on SwiftUI buttons inside `List` (UICollectionView) don't register on iOS 26. Use `state call` for list item interactions; `kif.tap` works for buttons, text fields, and other views outside of List.
 
+### WebView eval
+
+Evaluate JavaScript in app-registered WKWebViews. The app registers webviews with tags; agents eval JS by tag.
+
+**App-side registration:**
+
+```swift
+// In your WKWebView coordinator or wherever the webview is created:
+SwiftUITap.registerWebView(webView, tag: "reader")
+
+// On teardown:
+SwiftUITap.unregisterWebView(tag: "reader")
+```
+
+**Agent-side eval:**
+
+```bash
+# Eval JS (tag optional when only one webview is registered)
+swiftui-tap eval "document.title"
+swiftui-tap eval "1 + 1"
+
+# Top-level await works natively
+swiftui-tap eval "await fetch('/api/data').then(r => r.json())"
+
+# Explicit tag when multiple webviews exist
+swiftui-tap eval reader "window.__tap__.scrollFraction"
+
+# Eval a bundled TypeScript module (bun builds it, sends the bundle)
+swiftui-tap eval reader --module ./webtest.ts
+```
+
+**curl:**
+
+```bash
+curl localhost:9876/request -d '{"type":"eval","code":"document.title"}'
+curl localhost:9876/request -d '{"type":"eval","tag":"reader","code":"await window.__tap__.renderChapter(3)"}'
+```
+
+All eval runs in the page's content world (not an isolated world), so it has access to the page's DOM, `window`, and all app JS. Uses `callAsyncJavaScript` under the hood — promises are awaited natively, no polling needed.
+
+**Errors:**
+
+```json
+{"error": "no webviews registered"}
+{"error": "multiple webviews registered (reader, settings) — specify a tag"}
+{"error": "webview 'reader' not registered"}
+{"error": "JS error: ReferenceError: foo is not defined"}
+```
+
 ### Example tree output
 
 ```
@@ -535,7 +584,7 @@ var __doc__: String {
 
 The app is an HTTP **client** that long-polls the server. The agent sends commands via `POST /request` (state) or `POST /view` (view inspection). The server pairs them.
 
-- `POST /request` — state operations: get/set/call on `@SwiftUITap` properties
+- `POST /request` — state operations: get/set/call on `@SwiftUITap` properties, eval JS in registered WKWebViews
 - `POST /view` — view inspection: tree hierarchy dump, screenshots (full or cropped)
 - No server on the phone — avoids iOS sandbox issues
 - Works with simulator and on-device (phone polls dev machine)
@@ -635,6 +684,7 @@ SwiftUITap/
 │   │   ├── TapID.swift                # .tapID() view modifier
 │   │   ├── TapInspectable.swift       # .tapInspectable() root modifier
 │   │   ├── TapViewStore.swift         # View tree + screenshot dispatch
+│   │   ├── TapWebViewStore.swift      # WKWebView registration + JS eval
 │   │   └── TapViewFrameKey.swift      # PreferenceKey for anchor frames
 │   ├── TapDispatchObjC/
 │   │   ├── TapDispatch.m             # ObjC runtime: NSInvocation, @try/@catch, KVC
